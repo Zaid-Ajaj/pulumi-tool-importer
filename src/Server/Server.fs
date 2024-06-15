@@ -294,14 +294,20 @@ let getResourcesUnderResourceGroup (resourceGroupName: string) = task {
             resourceGroupJson.Add("id", resourceGroup.Value.Id.ToString())
             resourcesJson.Add(resourceGroupJson)
 
+            let ancestorTypes = JObject()
             for resource in resources do
+                let azureNativeType = AzureResourceTokens.fromAzureSpecToPulumi resource.resourceType
                 let resourceJson = JObject()
-                resourceJson.Add("type", AzureResourceTokens.fromAzureSpecToPulumi resource.resourceType)
+                resourceJson.Add("type", azureNativeType)
                 resourceJson.Add("name", resource.name)
                 resourceJson.Add("id", resource.resourceId)
                 resourcesJson.Add(resourceJson)
 
+                if not (ancestorTypes.ContainsKey azureNativeType) then
+                    ancestorTypes.Add(azureNativeType, JArray [| "azure-native:resources:ResourceGroup" |])
+
             pulumiImportJson.Add("resources", resourcesJson)
+            pulumiImportJson.Add("ancestorTypes", ancestorTypes)
 
             return Ok {
                 azureResources = resources
@@ -315,13 +321,13 @@ let getResourcesUnderResourceGroup (resourceGroupName: string) = task {
 }
 
 let tempDirectory (f: string -> 't) =
-    let tempDir = System.IO.Path.GetTempPath()
-    let dir = System.IO.Path.Combine(tempDir, $"pulumi-test-{Guid.NewGuid()}")
+    let tempDir = Path.GetTempPath()
+    let dir = Path.Combine(tempDir, $"pulumi-test-{Guid.NewGuid()}")
     try
-        let info = System.IO.Directory.CreateDirectory dir
+        let info = Directory.CreateDirectory dir
         f info.FullName
     finally
-        System.IO.Directory.Delete(dir, true)
+        Directory.Delete(dir, true)
 
 let importPreview (request: ImportPreviewRequest) = task {
     try
@@ -358,13 +364,19 @@ let importPreview (request: ImportPreviewRequest) = task {
             let importFilePath = Path.Combine(tempDir, "import.json")
             File.WriteAllText(importFilePath, request.pulumiImportJson)
 
-            let generatedCodePath = System.IO.Path.Combine(tempDir, "generated.txt")
+            let generatedCodePath = Path.Combine(tempDir, "generated.txt")
             let pulumiImportOutput = exec $"import --file {importFilePath} --yes --out {generatedCodePath}"
             if pulumiImportOutput.ExitCode <> 0 then
                 Error $"Error occurred while running 'pulumi import --file {importFilePath} --yes --out {generatedCodePath}' command: {pulumiImportOutput.StandardError}"
             else
-            let generatedCode = System.IO.File.ReadAllText(generatedCodePath)
-            Ok { generatedCode = generatedCode; stackState = "{}" }
+            let generatedCode = File.ReadAllText(generatedCodePath)
+            let stackOutputPath = Path.Combine(tempDir, "stack.json")
+            let exportStackOutput = exec $"stack export --file {stackOutputPath}"
+            if exportStackOutput.ExitCode <> 0 then
+                Error $"Error occurred while running 'pulumi stack export --file {stackOutputPath}' command: {exportStackOutput.StandardError}"
+            else
+            let stackState = File.ReadAllText(stackOutputPath)
+            Ok { generatedCode = generatedCode; stackState = stackState }
 
         return response
     with
@@ -373,7 +385,7 @@ let importPreview (request: ImportPreviewRequest) = task {
         return Error $"{errorType}: {error.Message}"
 }
 
-let schemaExplorerApi = {
+let importerApi = {
     getPulumiVersion = getPulumiVersion >> Async.AwaitTask
     awsCallerIdentity = getCallerIdentity >> Async.AwaitTask
     searchAws = searchAws >> Async.AwaitTask
@@ -383,7 +395,7 @@ let schemaExplorerApi = {
     importPreview = importPreview >> Async.AwaitTask
 }
 
-let pulumiSchemaDocs = Remoting.documentation "Pulumi Schema Explorer" [ ]
+let pulumiSchemaDocs = Remoting.documentation "Pulumi Importer" [ ]
 
 let webApp =
     Remoting.createApi ()
@@ -392,7 +404,7 @@ let webApp =
         printfn "%A" error
         Ignore
     )
-    |> Remoting.fromValue schemaExplorerApi
+    |> Remoting.fromValue importerApi
     |> Remoting.withDocs "/api/docs" pulumiSchemaDocs
     |> Remoting.buildHttpHandler
 

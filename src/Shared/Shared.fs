@@ -60,7 +60,7 @@ type ImportPreviewResponse = {
     stackState: string
 }
 
-type ISchemaExplorerApi = {
+type ImporterApi = {
     getPulumiVersion : unit -> Async<string>
     awsCallerIdentity : unit -> Async<Result<AwsCallerIdentity, string>>
     searchAws: string -> Async<Result<AwsSearchResponse, string>>

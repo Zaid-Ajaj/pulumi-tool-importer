@@ -11,11 +11,10 @@ open System
 open Fable.Remoting.Client
 open Fable.Core
 
-
 let serverApi =
     Remoting.createApi ()
     |> Remoting.withRouteBuilder Route.builder
-    |> Remoting.buildProxy<ISchemaExplorerApi>
+    |> Remoting.buildProxy<ImporterApi>
 
 [<ReactComponent>]
 let Row(cells: ReactElement list) =
@@ -112,21 +111,69 @@ let PulumiTitleWithVersion() =
 
 [<ReactComponent>]
 let ImportPreview(importJson: string) =
+    let tab, setTab = React.useState "code"
+    let language, setLanguage = React.useState "typescript"
     let preview, setPreview = React.useState(Deferred.HasNotStartedYet)
     let importPreview = React.useDeferredCallback(serverApi.importPreview, setPreview)
     React.fragment [
         match preview with
         | Deferred.HasNotStartedYet ->
-            Html.button [
-                prop.text "Start import preview"
-                prop.className "button is-primary"
-                prop.onClick (fun _ -> importPreview {
-                    language = "typescript"
-                    pulumiImportJson = importJson
-                })
+            Html.div [
+                prop.style [
+                    style.width 200
+                    style.display.inlineBlock
+                    style.position.relative
+                ]
+                prop.children [
+                    SelectSearch.selectSearch [
+                        selectSearch.options [
+                            { value = "typescript"; name = "TypeScript"; disabled = false }
+                            { value = "python"; name = "Python"; disabled = false }
+                            { value = "go"; name = "Go"; disabled = false }
+                            { value = "csharp"; name = "C#"; disabled = false }
+                            { value = "yaml"; name = "YAML"; disabled = false }
+                            { value = "java"; name = "Java"; disabled = false }
+                        ]
+
+                        selectSearch.value language
+                        selectSearch.search true
+                        selectSearch.placeholder "Select a language to preview the import"
+                        selectSearch.onChange setLanguage
+                    ]
+                ]
             ]
 
+            Html.div [
+                prop.style [
+                    style.width 200
+                    style.display.inlineBlock
+                    style.position.relative
+                    style.marginLeft 20
+                ]
+                prop.children [
+                    Html.button [
+                        prop.text "Start import preview"
+                        prop.style [
+                            style.height 36
+                            style.backgroundColor "#00D1B2"
+                            style.color "#fff"
+                            style.borderColor "#00D1B2"
+                            style.borderRadius 4
+                            style.borderStyle.none
+                            style.cursor.pointer
+                            style.fontSize 18
+                        ]
+                        prop.onClick (fun _ -> importPreview {
+                            language = language
+                            pulumiImportJson = importJson
+                        })
+                    ]
+                ]
+            ]
+
+
         | Deferred.InProgress ->
+            Html.p $"Generating import preview in {language}"
             Html.progress [
                 prop.className "progress is-small is-primary"
                 prop.max 100
@@ -145,7 +192,20 @@ let ImportPreview(importJson: string) =
             ]
 
         | Deferred.Resolved (Ok response) ->
-            Html.pre response.generatedCode
+            // tabs
+            Tabs [
+                Tab("Code", "code", tab, setTab)
+                Tab("Stack state", "stack-state", tab, setTab)
+            ]
+
+            // content
+            match tab with
+            | "code" ->
+                Html.pre response.generatedCode
+            | "stack-state" ->
+                Html.pre response.stackState
+            | _ ->
+                Html.none
     ]
 
 [<ReactComponent>]
