@@ -408,14 +408,10 @@ let webApp =
     |> Remoting.withDocs "/api/docs" pulumiSchemaDocs
     |> Remoting.buildHttpHandler
 
-let getExecutingAssembly() =
-    let assembly = System.Reflection.Assembly.GetExecutingAssembly()
-    System.IO.DirectoryInfo(assembly.Location).Parent.FullName
-
 let app = application {
     use_router webApp
     memory_cache
-    use_static (System.IO.Path.Combine(getExecutingAssembly(), "public"))
+    use_static AppContext.BaseDirectory
     use_gzip
 }
 

@@ -18,3 +18,4 @@ release.sh
 *.orig
 *.DotSettings.user
 .DS_Store
+artifacts
