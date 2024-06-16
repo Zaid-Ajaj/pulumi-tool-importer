@@ -1,0 +1,26 @@
+name: Publish
+
+on:
+  push:
+    branches: [ master ]
+
+permissions: write-all
+
+env:
+  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+jobs:
+  publish:
+    runs-on: macos-latest
+    steps:
+    - uses: actions/checkout@v3
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v3
+      with:
+        dotnet-version: 6.0.x
+    - name: Restore Tools
+      run: dotnet tool restore
+    - name: Build Solution
+      run: dotnet build PulumiImporter.sln
+    - name: Publish
+      run: dotnet run CreateAndPublishArtifacts

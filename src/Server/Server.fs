@@ -1,6 +1,7 @@
 module Server
 
 open System
+open System.Diagnostics
 open System.IO
 open Fable.Remoting.Server
 open Fable.Remoting.Giraffe
@@ -20,6 +21,7 @@ open Amazon.SecurityToken
 open Amazon.SecurityToken.Model
 open Azure.Identity
 open Azure.ResourceManager
+open Microsoft.Extensions.Logging
 
 let github = new GitHubClient(ProductHeaderValue "PulumiBot")
 
@@ -209,7 +211,6 @@ let pulumiCliBinary() : Task<string> = task {
             return! failwith "Pulumi not installed"
     with
     | error ->
-        printfn "%A" error
         // when pulumi is not installed, try to get the version of of the dev build
         // installed on the system using `make install` in the pulumi repo
         let homeDir = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)
@@ -409,6 +410,7 @@ let webApp =
     |> Remoting.buildHttpHandler
 
 let app = application {
+    logging (fun config -> config.ClearProviders() |> ignore)
     use_router webApp
     memory_cache
     use_static AppContext.BaseDirectory
@@ -417,5 +419,6 @@ let app = application {
 
 [<EntryPoint>]
 let main _ =
+    printfn "Pulumi Importer started, navigate to http://localhost:5000"
     run app
     0
