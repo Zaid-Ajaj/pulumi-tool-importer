@@ -187,28 +187,6 @@ Target.create "LocalNugetBundle" (fun _ ->
     Shell.deleteDir(Path.Combine(nugetParent, nugetFileName))
 )
 
-Target.create "LocalInstall" (fun _ ->
-    if Shell.Exec("dotnet", sprintf "tool install -g PulumiSchemaExplorer --add-source %s" deployPath) <> 0
-    then failwith "Local install failed"
-)
-
-Target.create "PublishNuget" (fun _ ->
-    let nugetKey =
-        match Environment.environVarOrNone "NUGET_KEY" with
-        | Some nugetKey -> nugetKey
-        | None -> failwith "NUGET_KEY environment variable not set"
-
-    let nugetPackage = Directory.EnumerateFiles(deployPath, "PulumiSchemaExplorer.*.nupkg", SearchOption.AllDirectories).First()
-
-    if Shell.Exec("dotnet", sprintf "nuget push %s -k %s -s https://api.nuget.org/v3/index.json" nugetPackage nugetKey) <> 0
-    then failwith "Nuget publish failed"
-)
-
-Target.create "LocalUninstall" (fun _ ->
-    if Shell.Exec("dotnet", "tool uninstall -g PulumiSchemaExplorer") <> 0
-    then failwith "Local install failed"
-)
-
 Target.create "Run" (fun _ ->
     run dotnet "build" sharedPath
     [ "server", dotnet "watch run" serverPath
@@ -239,7 +217,8 @@ let dependencies = [
     "CleanArtifacts"
       ==> "CreateArtifacts"
 
-    "BuildClient"
+    "InstallClient"
+      ==> "BuildClient"
       ==> "CreateAndPublishArtifacts"
 
     "CleanArtifacts"
@@ -251,6 +230,7 @@ let dependencies = [
 
     "InstallClient"
         ==> "RunTests"
+
 ]
 
 [<EntryPoint>]
