@@ -160,7 +160,10 @@ Target.create "Clean" (fun _ ->
     run dotnet "fable clean --yes" clientPath // Delete *.fs.js files created by Fable
 )
 
-Target.create "InstallClient" (fun _ -> run npm "install" ".")
+Target.create "InstallClient" (fun _ -> 
+    run dotnet "tool restore" "."
+    run npm "install" "."
+)
 
 Target.create "BuildClient" (fun _ ->
     run dotnet "fable -o output -s --run npm run build" clientPath

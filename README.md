@@ -4,15 +4,19 @@ A Pulumi tool for automatic resource discovery and resource import from cloud pr
 
 ### Install
 
+The importer as implemented a pulumi plugin of type `tool` which means it can be installed  using the pulumi CLI.
+
 ```
 pulumi plugin install tool importer --server github://api.github.com/Zaid-Ajaj
 ```
 
-### Run
+After installing the plugin, you can run it using the following command:
 
 ```
-pulumi run importer
+pulumi plugin run importer
 ```
+
+It will spin up a web server running at `http://localhost:5000` where you can navigate to so that you can  interact with the importer.
 
 ## Development
 
