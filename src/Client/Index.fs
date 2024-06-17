@@ -218,6 +218,7 @@ Put the contents inside a file called `import.json` and run `pulumi import -f im
 [<ReactComponent>]
 let AwsResourceExplorer() =
     let searchInputRef = React.useInputRef()
+    let tagsInputRef = React.useInputRef()
     let currentTab, setCurrentTab = React.useState "resources"
     let searchResults, setSearchResults = React.useState(Deferred.HasNotStartedYet)
     let search = React.useDeferredCallback(serverApi.searchAws, setSearchResults)
@@ -241,11 +242,19 @@ for AWS resource explorer
                             prop.ref searchInputRef
                             prop.onKeyUp(key.enter, fun ev ->
                                 searchInputRef.current
-                                |> Option.iter (fun element -> search element.value)
+                                |> Option.iter (fun searchInput ->
+                                    tagsInputRef.current
+                                    |> Option.iter (fun tagsInput ->
+                                        search {
+                                            queryString = searchInput.value
+                                            tags = tagsInput.value
+                                        })
+                                )
                             )
                         ]
                     ]
                 ]
+
                 Html.p [
                     prop.className "control"
                     prop.children [
@@ -254,7 +263,44 @@ for AWS resource explorer
                             prop.text "Search"
                             prop.onClick (fun _ ->
                                 searchInputRef.current
-                                |> Option.iter (fun element -> search element.value)
+                                |> Option.iter (fun searchInput ->
+                                    tagsInputRef.current
+                                    |> Option.iter (fun tagsInput ->
+                                        search {
+                                            queryString = searchInput.value
+                                            tags = tagsInput.value
+                                        })
+                                )
+                            )
+                        ]
+                    ]
+                ]
+            ]
+        ]
+
+        Html.details [
+            prop.style [ style.marginBottom 20 ]
+            prop.children [
+                Html.summary "Filter by tags"
+                Html.div [
+                    prop.className "control"
+                    prop.style [ style.marginBottom 20 ]
+                    prop.children [
+                        Html.input [
+                            prop.className "input"
+                            prop.type' "text"
+                            prop.placeholder "For example key1=value1;key2=value2"
+                            prop.ref tagsInputRef
+                            prop.onKeyUp(key.enter, fun ev ->
+                                searchInputRef.current
+                                |> Option.iter (fun searchInput ->
+                                    tagsInputRef.current
+                                    |> Option.iter (fun tagsInput ->
+                                        search {
+                                            queryString = searchInput.value
+                                            tags = tagsInput.value
+                                        })
+                                )
                             )
                         ]
                     ]
@@ -324,10 +370,7 @@ for AWS resource explorer
                 Html.pre [
                     prop.style [ style.maxHeight 400; style.overflow.auto ]
                     prop.children [
-                        Html.code [
-                            prop.style [ style.color.black ]
-                            prop.text response.pulumiImportJson
-                        ]
+                        Html.code response.pulumiImportJson
                     ]
                 ]
 

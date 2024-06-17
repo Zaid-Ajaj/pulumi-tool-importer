@@ -19,6 +19,11 @@ type AwsCallerIdentity = {
     userId: string
 }
 
+type AwsSearchRequest = {
+    queryString: string
+    tags: string
+}
+
 type AwsResource = {
     arn: string
     resourceType: string
@@ -64,7 +69,7 @@ type ImportPreviewResponse = {
 type ImporterApi = {
     getPulumiVersion : unit -> Async<string>
     awsCallerIdentity : unit -> Async<Result<AwsCallerIdentity, string>>
-    searchAws: string -> Async<Result<AwsSearchResponse, string>>
+    searchAws: AwsSearchRequest -> Async<Result<AwsSearchResponse, string>>
     azureAccount : unit -> Async<Result<AzureAccount, string>>
     getResourceGroups: unit -> Async<Result<string list, string>>
     getResourcesUnderResourceGroup: string -> Async<Result<AzureSearchResponse, string>>

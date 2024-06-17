@@ -141,27 +141,50 @@ let awsResourceTags (resource: Amazon.ResourceExplorer2.Model.Resource) =
     |> Option.defaultValue [  ]
     |> Map.ofSeq
 
-let searchAws (query: string) = task {
+let searchAws (request: AwsSearchRequest) = task {
     try
-        let! results = searchAws' (SearchRequest(QueryString=query, MaxResults=1000)) None
+        let! results = searchAws' (SearchRequest(QueryString=request.queryString, MaxResults=1000)) None
         let resources = [
-            for resource in results -> {
-                resourceType = resource.ResourceType
-                resourceId = awsResourceId resource
-                region = resource.Region
-                service = resource.Service
-                arn = resource.Arn
-                owningAccountId = resource.OwningAccountId
-                tags = awsResourceTags resource
-            }
+            for resource in results do
+                let tags = awsResourceTags resource
+                if request.tags <> "" then
+                    let tagPairs = request.tags.Split ";"
+                    let anyTagMatch = tagPairs |> Seq.exists (fun pair ->
+                        match pair.Split "=" with
+                        | [| tagKey; tagValue |] ->
+                            let key = tagKey.Trim()
+                            let value = tagValue.Trim()
+                            tags.ContainsKey key && tags[key].Trim() = value
+                        | _ ->
+                            false)
+
+                    if anyTagMatch then yield {
+                        resourceType = resource.ResourceType
+                        resourceId = awsResourceId resource
+                        region = resource.Region
+                        service = resource.Service
+                        arn = resource.Arn
+                        owningAccountId = resource.OwningAccountId
+                        tags = tags
+                    }
+                else
+                    yield {
+                        resourceType = resource.ResourceType
+                        resourceId = awsResourceId resource
+                        region = resource.Region
+                        service = resource.Service
+                        arn = resource.Arn
+                        owningAccountId = resource.OwningAccountId
+                        tags = tags
+                    }
         ]
 
         let pulumiImportJson = JObject()
         let resourcesJson = JArray()
         let ancestorTypes = JObject()
-        for resource in results do
+        for resource in resources do
             let resourceJson = JObject()
-            match resource.ResourceType.Split ":" with
+            match resource.resourceType.Split ":" with
             | [| serviceName'; resourceType' |] ->
                 let serviceName, resourceType =
                     match serviceName', resourceType' with
@@ -177,11 +200,10 @@ let searchAws (query: string) = task {
                     | None ->
                         ()
             | _ ->
-                resourceJson.Add("type", $"aws:{resource.ResourceType}")
+                resourceJson.Add("type", $"aws:{resource.resourceType}")
 
-            let resourceId = awsResourceId resource
-            resourceJson.Add("id", resourceId)
-            resourceJson.Add("name", resourceId.Replace("-", "_"))
+            resourceJson.Add("id", resource.resourceId)
+            resourceJson.Add("name", resource.resourceId.Replace("-", "_"))
             resourcesJson.Add(resourceJson)
 
         pulumiImportJson.Add("resources", resourcesJson)
