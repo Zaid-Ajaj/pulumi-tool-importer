@@ -96,7 +96,14 @@ let normalizeTypeName (input: string) =
     |> String.concat ""
 
 let normalizeModuleName (input: string) =
-    [ for part in input.Split "-" -> part ]
+    let parts = input.Split "-"
+    if parts.Length = 1 then
+        input
+    else
+    [ for (i, part) in Array.indexed parts ->
+        if i = 0
+        then part
+        else capitalize part ]
     |> String.concat ""
 
 let awsResourceId (resource: Amazon.ResourceExplorer2.Model.Resource) : string =
@@ -111,6 +118,29 @@ let awsResourceId (resource: Amazon.ResourceExplorer2.Model.Resource) : string =
     | _ ->
         id
 
+let awsResourceTags (resource: Amazon.ResourceExplorer2.Model.Resource) =
+    resource.Properties
+    |> Seq.tryFind (fun property -> property.Name = "tags" || property.Name = "Tags")
+    |> Option.bind (fun tags ->
+        if tags.Data.IsList() then
+            tags.Data.AsList()
+            |> Seq.filter (fun dict -> dict.IsDictionary())
+            |> Seq.collect(fun tags ->
+                let dict = tags.AsDictionary()
+                let isKeyValuePair =
+                    dict.ContainsKey "Key"
+                    && dict.ContainsKey "Value"
+                    && dict["Key"].IsString()
+                    && dict["Value"].IsString()
+                if isKeyValuePair then
+                    [ dict["Key"].AsString(), dict["Value"].AsString() ]
+                else
+                    [  ])
+            |> Some
+        else None)
+    |> Option.defaultValue [  ]
+    |> Map.ofSeq
+
 let searchAws (query: string) = task {
     try
         let! results = searchAws' (SearchRequest(QueryString=query, MaxResults=1000)) None
@@ -122,17 +152,30 @@ let searchAws (query: string) = task {
                 service = resource.Service
                 arn = resource.Arn
                 owningAccountId = resource.OwningAccountId
+                tags = awsResourceTags resource
             }
         ]
 
         let pulumiImportJson = JObject()
         let resourcesJson = JArray()
+        let ancestorTypes = JObject()
         for resource in results do
             let resourceJson = JObject()
             match resource.ResourceType.Split ":" with
-            | [| serviceName; resourceType |] ->
+            | [| serviceName'; resourceType' |] ->
+                let serviceName, resourceType =
+                    match serviceName', resourceType' with
+                    | "rds", "subgrp" -> "rds", "subnetGroup"
+                    | _ -> serviceName', resourceType'
+
                 let pulumiType = $"aws:{serviceName}/{normalizeModuleName resourceType}:{normalizeTypeName resourceType}"
                 resourceJson.Add("type", pulumiType)
+                if not (ancestorTypes.ContainsKey pulumiType) then
+                    match Map.tryFind pulumiType AwsAncestorTypes.ancestorsByType with
+                    | Some ancestors ->
+                        ancestorTypes.Add(pulumiType, JArray ancestors)
+                    | None ->
+                        ()
             | _ ->
                 resourceJson.Add("type", $"aws:{resource.ResourceType}")
 
@@ -142,6 +185,8 @@ let searchAws (query: string) = task {
             resourcesJson.Add(resourceJson)
 
         pulumiImportJson.Add("resources", resourcesJson)
+        if ancestorTypes.Count > 0 then
+            pulumiImportJson.Add("ancestorTypes", ancestorTypes)
 
         return Ok {
             resources = resources
@@ -368,7 +413,7 @@ let importPreview (request: ImportPreviewRequest) = task {
             let generatedCodePath = Path.Combine(tempDir, "generated.txt")
             let pulumiImportOutput = exec $"import --file {importFilePath} --yes --out {generatedCodePath}"
             if pulumiImportOutput.ExitCode <> 0 then
-                Error $"Error occurred while running 'pulumi import --file {importFilePath} --yes --out {generatedCodePath}' command: {pulumiImportOutput.StandardError}"
+                Error $"Error occurred while running 'pulumi import --file <tempDir>/import.json --yes --out <tempDir>/generated.txt' command: {pulumiImportOutput.StandardOutput}"
             else
             let generatedCode = File.ReadAllText(generatedCodePath)
             let stackOutputPath = Path.Combine(tempDir, "stack.json")

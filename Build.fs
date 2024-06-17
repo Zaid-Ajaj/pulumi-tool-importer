@@ -160,7 +160,7 @@ Target.create "Clean" (fun _ ->
     run dotnet "fable clean --yes" clientPath // Delete *.fs.js files created by Fable
 )
 
-Target.create "InstallClient" (fun _ -> 
+Target.create "InstallClient" (fun _ ->
     run dotnet "tool restore" "."
     run npm "install" "."
 )
@@ -206,6 +206,13 @@ Target.create "RunTests" (fun _ ->
 
 Target.create "Format" (fun _ ->
     run dotnet "fantomas . -r" "src"
+)
+
+Target.create "GenerateAwsAncestorTypes" (fun _ ->
+    let outputPath = Path.Combine(serverPath, "AwsAncestorTypes.fs")
+    let awsSchemaVersion = "6.35.0"
+    let content = Aws.generateLookupModule(awsSchemaVersion)
+    File.WriteAllText(outputPath, content)
 )
 
 open Fake.Core.TargetOperators

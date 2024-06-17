@@ -347,6 +347,7 @@ for AWS resource explorer
                                 Html.th "Type"
                                 Html.th "Region"
                                 Html.th "Service"
+                                Html.th "Tags"
                                 Html.th "Owning account ID"
                             ]
                         ]
@@ -365,6 +366,37 @@ for AWS resource explorer
                                 Html.td resource.resourceType
                                 Html.td resource.region
                                 Html.td resource.service
+                                Html.td [
+                                    prop.style [
+                                        style.maxWidth 400
+                                        style.overflow.hidden
+                                    ]
+
+                                    prop.children [
+                                        Html.ul [
+                                            prop.style [ style.listStyleType.none ]
+                                            prop.children [
+                                                for (key, value) in Map.toList resource.tags do
+                                                Html.li [
+                                                    Html.span [
+                                                        prop.style [ style.fontWeight.bolder ]
+                                                        prop.text key
+                                                    ]
+
+                                                    Html.i [
+                                                        prop.style [ style.marginLeft 5; style.marginRight 5  ]
+                                                        prop.className "fas fa-arrow-right"
+                                                    ]
+
+                                                    Html.span [
+                                                        prop.style [ style.fontStyle.italic ]
+                                                        prop.text value
+                                                    ]
+                                                ]
+                                            ]
+                                        ]
+                                    ]
+                                ]
                                 Html.td resource.owningAccountId
                             ]
                         ]

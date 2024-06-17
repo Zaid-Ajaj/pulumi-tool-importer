@@ -26,6 +26,7 @@ type AwsResource = {
     region: string
     owningAccountId: string
     service: string
+    tags: Map<string, string>
 }
 
 type AwsSearchResponse = {
