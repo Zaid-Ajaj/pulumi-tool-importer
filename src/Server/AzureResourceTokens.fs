@@ -17,7 +17,11 @@ let moduleAndResource (fullQualifiedTypeName: string) =
                 resourceNamespace.Replace(".", "").ToLower()
 
         let resource = resourceName.Pascalize().Singularize(true)
-        resourceModule, resource
+        match resourceModule, resource with
+        | "network", "Dnszone" ->
+            "network", "Zone"
+        | _ ->
+            resourceModule, resource
 
 let fromAzureSpecToPulumi(token: string) =
     if String.IsNullOrWhiteSpace token then
@@ -27,6 +31,7 @@ let fromAzureSpecToPulumi(token: string) =
         | [| fullQualifiedTypeName; version |] ->
             let moduleName, resource = moduleAndResource fullQualifiedTypeName
             $"azure-native:{moduleName}:{resource}"
+
         | [| fullQualifiedTypeName |] ->
             let moduleName, resource = moduleAndResource fullQualifiedTypeName
             $"azure-native:{moduleName}:{resource}"

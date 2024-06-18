@@ -189,6 +189,8 @@ let searchAws (request: AwsSearchRequest) = task {
                 let serviceName, resourceType =
                     match serviceName', resourceType' with
                     | "rds", "subgrp" -> "rds", "subnetGroup"
+                    | "ec2", "volume" -> "ec2", "volumeAttachment"
+                    | "ec2", "elastic-ip" -> "ec2", "eip"
                     | _ -> serviceName', resourceType'
 
                 let pulumiType = $"aws:{serviceName}/{normalizeModuleName resourceType}:{normalizeTypeName resourceType}"
@@ -434,7 +436,8 @@ let importPreview (request: ImportPreviewRequest) = task {
 
             let generatedCodePath = Path.Combine(tempDir, "generated.txt")
             let pulumiImportOutput = exec $"import --file {importFilePath} --yes --out {generatedCodePath}"
-            if pulumiImportOutput.ExitCode <> 0 then
+            let hasErrors = pulumiImportOutput.StandardOutput.Contains "error:"
+            if pulumiImportOutput.ExitCode <> 0 && hasErrors then
                 Error $"Error occurred while running 'pulumi import --file <tempDir>/import.json --yes --out <tempDir>/generated.txt' command: {pulumiImportOutput.StandardOutput}"
             else
             let generatedCode = File.ReadAllText(generatedCodePath)
@@ -444,7 +447,11 @@ let importPreview (request: ImportPreviewRequest) = task {
                 Error $"Error occurred while running 'pulumi stack export --file {stackOutputPath}' command: {exportStackOutput.StandardError}"
             else
             let stackState = File.ReadAllText(stackOutputPath)
-            Ok { generatedCode = generatedCode; stackState = stackState }
+            let warnings =
+                pulumiImportOutput.StandardOutput.Split "\n"
+                |> Array.filter (fun line -> line.Contains "warning:")
+                |> Array.toList
+            Ok { generatedCode = generatedCode; stackState = stackState; warnings = warnings }
 
         return response
     with

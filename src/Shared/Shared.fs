@@ -64,6 +64,7 @@ type ImportPreviewRequest = {
 type ImportPreviewResponse = {
     generatedCode: string
     stackState: string
+    warnings: string list
 }
 
 type ImporterApi = {

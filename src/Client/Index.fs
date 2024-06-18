@@ -111,67 +111,95 @@ let PulumiTitleWithVersion() =
 
 [<ReactComponent>]
 let ImportPreview(importJson: string) =
+    let pulumiImportJson, setPulumiImportJson = React.useState importJson
     let tab, setTab = React.useState "code"
     let language, setLanguage = React.useState "typescript"
     let preview, setPreview = React.useState(Deferred.HasNotStartedYet)
     let importPreview = React.useDeferredCallback(serverApi.importPreview, setPreview)
     React.fragment [
+        Html.div [
+             prop.style [
+                 style.width 200
+                 style.display.inlineBlock
+                 style.position.relative
+             ]
+             prop.children [
+                 SelectSearch.selectSearch [
+                     selectSearch.options [
+                         { value = "typescript"; name = "TypeScript"; disabled = false }
+                         { value = "python"; name = "Python"; disabled = false }
+                         { value = "go"; name = "Go"; disabled = false }
+                         { value = "csharp"; name = "C#"; disabled = false }
+                         { value = "yaml"; name = "YAML"; disabled = false }
+                         { value = "java"; name = "Java"; disabled = false }
+                     ]
+
+                     selectSearch.value language
+                     selectSearch.search true
+                     selectSearch.placeholder "Select a language to preview the import"
+                     selectSearch.onChange setLanguage
+                 ]
+             ]
+        ]
+
+        Html.div [
+            prop.style [
+                style.width 200
+                style.display.inlineBlock
+                style.position.relative
+                style.marginLeft 20
+            ]
+            prop.children [
+                Html.button [
+                    prop.text "Start import preview"
+                    prop.style [
+                        style.height 36
+                        if Deferred.inProgress preview
+                        then style.backgroundColor.gray
+                        else style.backgroundColor "#00D1B2"
+                        style.color "#fff"
+                        style.borderColor "#00D1B2"
+                        style.borderRadius 4
+                        style.borderStyle.none
+                        if not (Deferred.inProgress preview) then style.cursor.pointer
+                        style.fontSize 18
+                    ]
+                    prop.disabled (Deferred.inProgress preview)
+                    prop.onClick (fun _ -> importPreview {
+                        language = language
+                        pulumiImportJson = pulumiImportJson
+                    })
+                ]
+            ]
+        ]
+
+        Html.br [ ]
+
+        Html.details [
+            prop.style [
+                style.marginTop 10
+                style.marginBottom 10
+            ]
+
+            prop.children [
+                Html.summary "Edit Import JSON:"
+                Html.div [
+                    prop.className "control"
+                    prop.children [
+                         Html.textarea [
+                            prop.style [ style.height 350 ]
+                            prop.className "input"
+                            prop.value pulumiImportJson
+                            prop.onChange setPulumiImportJson
+                        ]
+                    ]
+                ]
+            ]
+        ]
+
         match preview with
         | Deferred.HasNotStartedYet ->
-            Html.div [
-                prop.style [
-                    style.width 200
-                    style.display.inlineBlock
-                    style.position.relative
-                ]
-                prop.children [
-                    SelectSearch.selectSearch [
-                        selectSearch.options [
-                            { value = "typescript"; name = "TypeScript"; disabled = false }
-                            { value = "python"; name = "Python"; disabled = false }
-                            { value = "go"; name = "Go"; disabled = false }
-                            { value = "csharp"; name = "C#"; disabled = false }
-                            { value = "yaml"; name = "YAML"; disabled = false }
-                            { value = "java"; name = "Java"; disabled = false }
-                        ]
-
-                        selectSearch.value language
-                        selectSearch.search true
-                        selectSearch.placeholder "Select a language to preview the import"
-                        selectSearch.onChange setLanguage
-                    ]
-                ]
-            ]
-
-            Html.div [
-                prop.style [
-                    style.width 200
-                    style.display.inlineBlock
-                    style.position.relative
-                    style.marginLeft 20
-                ]
-                prop.children [
-                    Html.button [
-                        prop.text "Start import preview"
-                        prop.style [
-                            style.height 36
-                            style.backgroundColor "#00D1B2"
-                            style.color "#fff"
-                            style.borderColor "#00D1B2"
-                            style.borderRadius 4
-                            style.borderStyle.none
-                            style.cursor.pointer
-                            style.fontSize 18
-                        ]
-                        prop.onClick (fun _ -> importPreview {
-                            language = language
-                            pulumiImportJson = importJson
-                        })
-                    ]
-                ]
-            ]
-
-
+            Html.none
         | Deferred.InProgress ->
             Html.p $"Generating import preview in {language}"
             Html.progress [
@@ -186,9 +214,13 @@ let ImportPreview(importJson: string) =
             ]
 
         | Deferred.Resolved (Error errorMessage) ->
-            Html.p [
-                prop.style [ style.color.red ]
-                prop.text errorMessage
+            let parts = errorMessage.Split "\n"
+            React.fragment [
+                for part in parts do
+                Html.p [
+                    prop.style [ style.color.red ]
+                    prop.text part
+                ]
             ]
 
         | Deferred.Resolved (Ok response) ->
@@ -196,6 +228,8 @@ let ImportPreview(importJson: string) =
             Tabs [
                 Tab("Code", "code", tab, setTab)
                 Tab("Stack state", "stack-state", tab, setTab)
+                if not (List.isEmpty response.warnings) then
+                    Tab($"Warnings ({List.length response.warnings})", "warnings", tab, setTab)
             ]
 
             // content
@@ -204,6 +238,11 @@ let ImportPreview(importJson: string) =
                 Html.pre response.generatedCode
             | "stack-state" ->
                 Html.pre response.stackState
+            | "warnings" ->
+                Html.ul [
+                    for warning in response.warnings do
+                    Html.li warning
+                ]
             | _ ->
                 Html.none
     ]
