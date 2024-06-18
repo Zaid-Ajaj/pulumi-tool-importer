@@ -118,28 +118,28 @@ let ImportPreview(importJson: string) =
     let importPreview = React.useDeferredCallback(serverApi.importPreview, setPreview)
     React.fragment [
         Html.div [
-             prop.style [
-                 style.width 200
-                 style.display.inlineBlock
-                 style.position.relative
-             ]
-             prop.children [
-                 SelectSearch.selectSearch [
-                     selectSearch.options [
-                         { value = "typescript"; name = "TypeScript"; disabled = false }
-                         { value = "python"; name = "Python"; disabled = false }
-                         { value = "go"; name = "Go"; disabled = false }
-                         { value = "csharp"; name = "C#"; disabled = false }
-                         { value = "yaml"; name = "YAML"; disabled = false }
-                         { value = "java"; name = "Java"; disabled = false }
-                     ]
+            prop.style [
+                style.width 200
+                style.display.inlineBlock
+                style.position.relative
+            ]
+            prop.children [
+                SelectSearch.selectSearch [
+                    selectSearch.options [
+                        { value = "typescript"; name = "TypeScript"; disabled = false }
+                        { value = "python"; name = "Python"; disabled = false }
+                        { value = "go"; name = "Go"; disabled = false }
+                        { value = "csharp"; name = "C#"; disabled = false }
+                        { value = "yaml"; name = "YAML"; disabled = false }
+                        { value = "java"; name = "Java"; disabled = false }
+                    ]
 
-                     selectSearch.value language
-                     selectSearch.search true
-                     selectSearch.placeholder "Select a language to preview the import"
-                     selectSearch.onChange setLanguage
-                 ]
-             ]
+                    selectSearch.value language
+                    selectSearch.search true
+                    selectSearch.placeholder "Select a language to preview the import"
+                    selectSearch.onChange setLanguage
+                ]
+            ]
         ]
 
         Html.div [
@@ -152,18 +152,8 @@ let ImportPreview(importJson: string) =
             prop.children [
                 Html.button [
                     prop.text "Start import preview"
-                    prop.style [
-                        style.height 36
-                        if Deferred.inProgress preview
-                        then style.backgroundColor.gray
-                        else style.backgroundColor "#00D1B2"
-                        style.color "#fff"
-                        style.borderColor "#00D1B2"
-                        style.borderRadius 4
-                        style.borderStyle.none
-                        if not (Deferred.inProgress preview) then style.cursor.pointer
-                        style.fontSize 18
-                    ]
+                    prop.className "button is-primary"
+                    prop.style [ style.height 36; style.top -5 ]
                     prop.disabled (Deferred.inProgress preview)
                     prop.onClick (fun _ -> importPreview {
                         language = language
@@ -900,6 +890,27 @@ let AzureTile() = Html.div [
     ]
 ]
 
+
+[<ReactComponent>]
+let ImportPreviewTile() = Html.div [
+    prop.onClick (fun _ -> Router.navigate "import-preview")
+    prop.text "Import Preview"
+    prop.style [
+        style.margin 10
+        style.fontSize 20
+        style.height 60
+        style.width 200
+        style.cursor.pointer
+        style.textAlign.center
+        style.display.inlineBlock
+        style.position.relative
+        style.overflow.hidden
+        style.paddingTop 10
+        style.border(2, borderStyle.solid, color.black)
+        style.boxShadow(0, 0, 2, 0, color.black)
+    ]
+]
+
 [<ReactComponent>]
 let View() =
     let (currentUrl, setCurrentUrl) = React.useState(Router.currentUrl())
@@ -924,22 +935,38 @@ let View() =
             React.router [
                  router.onUrlChanged setCurrentUrl
                  router.children [
-                     match currentUrl with
-                     | [ "aws" ] ->
-                         AwsImporter()
-                     | [ "aws-start" ] ->
-                         AwsStartPage()
-                     | [ "azure-start" ] ->
-                         AzureStartPage()
-                     | [ "azure" ] ->
-                         AzureImporter()
-                     | _ ->
-                         Html.p [
-                             prop.text "Select a cloud provider to import resources from:"
-                             prop.className "subtitle"
-                         ]
-                         AwsTile()
-                         AzureTile()
+                    match currentUrl with
+                    | [ "aws" ] ->
+                        AwsImporter()
+                    | [ "aws-start" ] ->
+                        AwsStartPage()
+                    | [ "azure-start" ] ->
+                        AzureStartPage()
+                    | [ "azure" ] ->
+                        AzureImporter()
+                    | [ "import-preview" ] ->
+                        MarkdownContent """
+### Pulumi Import Preview
+Use the import preview to experiment with the Pulumi Import feature.
+Edit the JSON content and preview the import results in different languages alonside the imported stack state.
+                        """
+                        ImportPreview("{ \"resources\": [] }")
+                    | _ ->
+                        Html.p [
+                            prop.text "Select a cloud provider to import resources from:"
+                            prop.className "subtitle"
+                        ]
+ 
+                        AwsTile()
+                        AzureTile()
+ 
+                        Html.p [
+                           prop.text "Experiment with Pulumi Import and preview results:"
+                           prop.className "subtitle"
+                           prop.style [ style.marginTop 10 ]
+                        ]
+ 
+                        ImportPreviewTile()
                  ]
             ]
         ]

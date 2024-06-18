@@ -3,6 +3,7 @@ module Server
 open System
 open System.Diagnostics
 open System.IO
+open Amazon.EC2.Model
 open Fable.Remoting.Server
 open Fable.Remoting.Giraffe
 open Newtonsoft.Json
@@ -22,6 +23,7 @@ open Amazon.SecurityToken.Model
 open Azure.Identity
 open Azure.ResourceManager
 open Microsoft.Extensions.Logging
+open Amazon.EC2
 
 let github = new GitHubClient(ProductHeaderValue "PulumiBot")
 
@@ -36,6 +38,10 @@ let githubClient() =
 let resourceExplorerClient() =
     let credentials = EnvironmentVariablesAWSCredentials()
     new AmazonResourceExplorer2Client(credentials)
+
+let ec2Client() =
+    let credentials = EnvironmentVariablesAWSCredentials()
+    new AmazonEC2Client(credentials)
 
 let securityTokenServiceClient() =
     let credentials = EnvironmentVariablesAWSCredentials()
@@ -144,8 +150,21 @@ let awsResourceTags (resource: Amazon.ResourceExplorer2.Model.Resource) =
 let searchAws (request: AwsSearchRequest) = task {
     try
         let! results = searchAws' (SearchRequest(QueryString=request.queryString, MaxResults=1000)) None
+        let ec2Client = ec2Client()
+        let! securityGroupRules = ec2Client.DescribeSecurityGroupRulesAsync(DescribeSecurityGroupRulesRequest())
+        let securityGroupRulesMap =
+            securityGroupRules.SecurityGroupRules
+            |> Seq.map (fun rule -> rule.SecurityGroupRuleId, rule)
+            |> Map.ofSeq
+
+        let (|SecurityGroupRule|_|) (securityGroupRuleId: string) =
+            match securityGroupRulesMap.TryGetValue securityGroupRuleId with
+            | true, rule -> Some rule
+            | _ -> None
+
         let resources = [
             for resource in results do
+                let resourceId = awsResourceId resource
                 let tags = awsResourceTags resource
                 if request.tags <> "" then
                     let tagPairs = request.tags.Split ";"
@@ -160,7 +179,7 @@ let searchAws (request: AwsSearchRequest) = task {
 
                     if anyTagMatch then yield {
                         resourceType = resource.ResourceType
-                        resourceId = awsResourceId resource
+                        resourceId = resourceId
                         region = resource.Region
                         service = resource.Service
                         arn = resource.Arn
@@ -170,7 +189,7 @@ let searchAws (request: AwsSearchRequest) = task {
                 else
                     yield {
                         resourceType = resource.ResourceType
-                        resourceId = awsResourceId resource
+                        resourceId = resourceId
                         region = resource.Region
                         service = resource.Service
                         arn = resource.Arn
@@ -189,8 +208,9 @@ let searchAws (request: AwsSearchRequest) = task {
                 let serviceName, resourceType =
                     match serviceName', resourceType' with
                     | "rds", "subgrp" -> "rds", "subnetGroup"
-                    | "ec2", "volume" -> "ec2", "volumeAttachment"
+                    | "ec2", "volume" -> "ebs", "volume"
                     | "ec2", "elastic-ip" -> "ec2", "eip"
+                    | "logs", "log-group" -> "cloudwatch", "logGroup"
                     | _ -> serviceName', resourceType'
 
                 let pulumiType = $"aws:{serviceName}/{normalizeModuleName resourceType}:{normalizeTypeName resourceType}"
@@ -204,7 +224,28 @@ let searchAws (request: AwsSearchRequest) = task {
             | _ ->
                 resourceJson.Add("type", $"aws:{resource.resourceType}")
 
-            resourceJson.Add("id", resource.resourceId)
+            let notEmpty (input: string) = not (String.IsNullOrWhiteSpace input)
+
+            match resource.resourceId with
+            | SecurityGroupRule rule ->
+                // format: <SECURITY-GROUP-ID>_<TYPE>_<PROTOCOL>_<FROM-PORT>_<TO-PORT>_SOURCE
+                let ruleType = if rule.IsEgress then "egress" else "ingress"
+                let source =
+                    if notEmpty rule.CidrIpv4 then rule.CidrIpv4
+                    elif notEmpty rule.CidrIpv6 then rule.CidrIpv6
+                    else "self"
+
+                resourceJson.Add("id", String.concat "_" [
+                    rule.GroupId
+                    ruleType
+                    rule.IpProtocol
+                    $"{rule.FromPort}"
+                    $"{rule.ToPort}"
+                    source
+                ])
+            | _ ->
+                resourceJson.Add("id", resource.resourceId)
+
             resourceJson.Add("name", resource.resourceId.Replace("-", "_"))
             resourcesJson.Add(resourceJson)
 
@@ -221,47 +262,6 @@ let searchAws (request: AwsSearchRequest) = task {
         let errorType = error.GetType().Name
         return Error $"{errorType}: {error.Message}"
 }
-
-
-let rec searchGithub (term: string) =
-    task {
-        try
-            let request = SearchRepositoriesRequest term
-            let! searchResults = githubClient().Search.SearchRepo(request)
-            let bestResults =
-                searchResults.Items
-                |> Seq.map (fun repo -> repo.FullName)
-
-            return RateLimited.Response(List.ofSeq bestResults)
-        with
-            | :? RateLimitExceededException as error ->
-                return RateLimited.RateLimitReached
-    }
-
-let version (release: Release) =
-    if not (String.IsNullOrWhiteSpace(release.Name)) then
-        Some (release.Name.Substring(1, release.Name.Length - 1))
-    elif not (String.IsNullOrWhiteSpace(release.TagName)) then
-        Some (release.TagName.Substring(1, release.TagName.Length - 1))
-    else
-        None
-
-let findGithubReleases (repo: string) =
-    task {
-        try
-            match repo.Split "/" with
-            | [| owner; repoName |] ->
-                let! releases = githubClient().Repository.Release.GetAll(owner, repoName)
-                return
-                    List.choose id [ for release in releases -> version release ]
-                    |> RateLimited.Response
-            | _ ->
-                return
-                    RateLimited.Response []
-        with
-        | :? RateLimitExceededException as error ->
-               return RateLimited.RateLimitReached
-    }
 
 let pulumiCliBinary() : Task<string> = task {
     try
@@ -292,28 +292,11 @@ let pulumiCliBinary() : Task<string> = task {
             return "pulumi"
 }
 
-let rec getSchemaVersionsFromGithub (owner, repo) =
-    task {
-        try
-            let client = githubClient()
-            let! repository = client.Repository.Get(owner, repo)
-            let! releases = client.Repository.Release.GetAll(repository.Id)
-            return
-                releases
-                |> Seq.choose (fun release -> version release)
-                |> List.ofSeq
-                |> RateLimited.Response
-        with
-            | :? RateLimitExceededException ->
-                return RateLimited.RateLimitReached
-    }
-
 let getPulumiVersion() = task {
     let! binary = pulumiCliBinary()
     let! output = Cli.Wrap(binary).WithArguments("version").ExecuteBufferedAsync()
     return output.StandardOutput
 }
-
 
 let azureAccount() = task {
     try
