@@ -147,18 +147,31 @@ let awsResourceTags (resource: Amazon.ResourceExplorer2.Model.Resource) =
     |> Option.defaultValue [  ]
     |> Map.ofSeq
 
+let notEmpty (input: string) = not (String.IsNullOrWhiteSpace input)
+
 let searchAws (request: AwsSearchRequest) = task {
     try
         let! results = searchAws' (SearchRequest(QueryString=request.queryString, MaxResults=1000)) None
-        let ec2Client = ec2Client()
-        let! securityGroupRules = ec2Client.DescribeSecurityGroupRulesAsync(DescribeSecurityGroupRulesRequest())
-        let securityGroupRulesMap =
-            securityGroupRules.SecurityGroupRules
-            |> Seq.map (fun rule -> rule.SecurityGroupRuleId, rule)
-            |> Map.ofSeq
+        let resourceTypesFromSearchResult =
+            results
+            |> Seq.map (fun resource -> resource.ResourceType)
+            |> Seq.distinct
+            |> set
+
+        let! securityGroupRules = task {
+            if resourceTypesFromSearchResult.Contains "ec2:security-group-rule" then
+                let client = ec2Client()
+                let! response = client.DescribeSecurityGroupRulesAsync(DescribeSecurityGroupRulesRequest())
+                return
+                    response.SecurityGroupRules
+                    |> Seq.map (fun rule -> rule.SecurityGroupRuleId, rule)
+                    |> Map.ofSeq
+            else
+                return Map.empty
+        }
 
         let (|SecurityGroupRule|_|) (securityGroupRuleId: string) =
-            match securityGroupRulesMap.TryGetValue securityGroupRuleId with
+            match securityGroupRules.TryGetValue securityGroupRuleId with
             | true, rule -> Some rule
             | _ -> None
 
@@ -223,8 +236,6 @@ let searchAws (request: AwsSearchRequest) = task {
                         ()
             | _ ->
                 resourceJson.Add("type", $"aws:{resource.resourceType}")
-
-            let notEmpty (input: string) = not (String.IsNullOrWhiteSpace input)
 
             match resource.resourceId with
             | SecurityGroupRule rule ->
