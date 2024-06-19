@@ -161,11 +161,9 @@ let searchAws (request: AwsSearchRequest) = task {
         let! securityGroupRules = task {
             if resourceTypesFromSearchResult.Contains "ec2:security-group-rule" then
                 let client = ec2Client()
-                let! response = client.DescribeSecurityGroupRulesAsync(DescribeSecurityGroupRulesRequest())
-                return
-                    response.SecurityGroupRules
-                    |> Seq.map (fun rule -> rule.SecurityGroupRuleId, rule)
-                    |> Map.ofSeq
+                let request = DescribeSecurityGroupRulesRequest()
+                let! response = client.DescribeSecurityGroupRulesAsync(request)
+                return Map.ofList [ for rule in response.SecurityGroupRules -> rule.SecurityGroupRuleId, rule ]
             else
                 return Map.empty
         }
@@ -241,6 +239,7 @@ let searchAws (request: AwsSearchRequest) = task {
             | SecurityGroupRule rule ->
                 // format: <SECURITY-GROUP-ID>_<TYPE>_<PROTOCOL>_<FROM-PORT>_<TO-PORT>_SOURCE
                 let ruleType = if rule.IsEgress then "egress" else "ingress"
+                // TODO: fix me
                 let source =
                     if notEmpty rule.CidrIpv4 then rule.CidrIpv4
                     elif notEmpty rule.CidrIpv6 then rule.CidrIpv6
