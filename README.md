@@ -2,7 +2,7 @@
 
 A Pulumi tool for automatic resource discovery and resource import from cloud providers.
 
-### Install via Pulumi
+### Install via Pulumi (requires Pulumi CLI v3.121.0 or later)
 
 The importer as implemented a pulumi plugin of type `tool` which means it can be installed  using the pulumi CLI.
 
