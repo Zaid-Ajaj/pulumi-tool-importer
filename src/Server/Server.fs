@@ -13,7 +13,6 @@ open CliWrap.Buffered
 open Newtonsoft.Json.Linq
 open Shared
 open System.Threading.Tasks
-open Octokit
 open Amazon
 open Amazon.ResourceExplorer2
 open Amazon.ResourceExplorer2.Model
@@ -24,16 +23,6 @@ open Azure.Identity
 open Azure.ResourceManager
 open Microsoft.Extensions.Logging
 open Amazon.EC2
-
-let github = new GitHubClient(ProductHeaderValue "PulumiBot")
-
-let githubClient() =
-    let githubToken = Environment.GetEnvironmentVariable "GITHUB_TOKEN"
-    if String.IsNullOrWhiteSpace(githubToken) then
-        github
-    else
-        github.Credentials <- Octokit.Credentials(githubToken)
-        github
 
 let resourceExplorerClient() =
     let credentials = EnvironmentVariablesAWSCredentials()
@@ -224,7 +213,15 @@ let searchAws (request: AwsSearchRequest) = task {
                     | "logs", "log-group" -> "cloudwatch", "logGroup"
                     | _ -> serviceName', resourceType'
 
-                let pulumiType = $"aws:{serviceName}/{normalizeModuleName resourceType}:{normalizeTypeName resourceType}"
+                let pulumiType =
+                    match resource.resourceId with
+                    | SecurityGroupRule rule  ->
+                        if rule.IsEgress
+                        then "aws:vpc/securityGroupEgressRule:SecurityGroupEgressRule"
+                        else "aws:vpc/securityGroupIngressRule:SecurityGroupIngressRule"
+                    | _ ->
+                        $"aws:{serviceName}/{normalizeModuleName resourceType}:{normalizeTypeName resourceType}"
+
                 resourceJson.Add("type", pulumiType)
                 if not (ancestorTypes.ContainsKey pulumiType) then
                     match Map.tryFind pulumiType AwsAncestorTypes.ancestorsByType with
@@ -235,27 +232,7 @@ let searchAws (request: AwsSearchRequest) = task {
             | _ ->
                 resourceJson.Add("type", $"aws:{resource.resourceType}")
 
-            match resource.resourceId with
-            | SecurityGroupRule rule ->
-                // format: <SECURITY-GROUP-ID>_<TYPE>_<PROTOCOL>_<FROM-PORT>_<TO-PORT>_SOURCE
-                let ruleType = if rule.IsEgress then "egress" else "ingress"
-                // TODO: fix me
-                let source =
-                    if notEmpty rule.CidrIpv4 then rule.CidrIpv4
-                    elif notEmpty rule.CidrIpv6 then rule.CidrIpv6
-                    else "self"
-
-                resourceJson.Add("id", String.concat "_" [
-                    rule.GroupId
-                    ruleType
-                    rule.IpProtocol
-                    $"{rule.FromPort}"
-                    $"{rule.ToPort}"
-                    source
-                ])
-            | _ ->
-                resourceJson.Add("id", resource.resourceId)
-
+            resourceJson.Add("id", resource.resourceId)
             resourceJson.Add("name", resource.resourceId.Replace("-", "_"))
             resourcesJson.Add(resourceJson)
 

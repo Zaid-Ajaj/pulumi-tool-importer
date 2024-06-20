@@ -87,27 +87,21 @@ let Tabs(children: ReactElement list) =
         Html.ul children
     ])
 
-let inline capitalize(input: string) =
-    if String.IsNullOrWhiteSpace input then
-        ""
-    else
-      input.[0].ToString().ToUpper() + input.[1..]
-
 [<ReactComponent>]
 let PulumiTitleWithVersion() =
     let response = React.useDeferred(serverApi.getPulumiVersion(), [|  |])
     match response with
     | Deferred.Resolved version ->
-        Html.span [
-            prop.style [ style.marginTop 6 ]
-            prop.text $"Pulumi Importer | CLI {version}"
+        React.fragment [
+            Html.div "Pulumi Importer"
+            Html.div [
+                prop.style [ style.fontSize 13; style.marginTop 10; style.marginLeft 10 ]
+                prop.text $" using Pulumi {version}"
+            ]
         ]
 
     | _ ->
-        Html.span [
-            prop.style [ style.marginTop 6 ]
-            prop.text "Pulumi Importer"
-        ]
+         Html.div "Pulumi Importer"
 
 [<ReactComponent>]
 let ImportPreview(importJson: string) =
@@ -214,7 +208,6 @@ let ImportPreview(importJson: string) =
             ]
 
         | Deferred.Resolved (Ok response) ->
-            // tabs
             Tabs [
                 Tab("Code", "code", tab, setTab)
                 Tab("Stack state", "stack-state", tab, setTab)
@@ -222,7 +215,6 @@ let ImportPreview(importJson: string) =
                     Tab($"Warnings ({List.length response.warnings})", "warnings", tab, setTab)
             ]
 
-            // content
             match tab with
             | "code" ->
                 Html.pre response.generatedCode
@@ -242,6 +234,8 @@ let ImportJsonDocs() = MarkdownContent """
 The following JSON content can be used by pulumi to batch import the resources into a pulumi project.
 
 Put the contents inside a file called `import.json` and run `pulumi import -f import.json`
+
+See [pulumi import](https://www.pulumi.com/docs/cli/commands/pulumi_import/) to learn more about importing resources.
 """
 
 [<ReactComponent>]
@@ -383,7 +377,7 @@ for AWS resource explorer
 
                         Html.li [
                             prop.children [
-                                Html.a [ Html.span "Preview" ]
+                                Html.a [ Html.span "Import Preview" ]
                             ]
                             prop.onClick (fun _ -> setCurrentTab "preview")
                             if currentTab = "preview" then
@@ -695,9 +689,47 @@ let AzureResourcesWithinResourceGroup(resourceGroup: string) =
                 Html.none
         ]
 
+[<ReactComponent>]
+let AzureAccount() =
+    let account = React.useDeferred(serverApi.azureAccount(), [|  |])
+    match account with
+    | Deferred.HasNotStartedYet -> Html.none
+    | Deferred.InProgress ->
+        Html.progress [
+            prop.className "progress is-small is-primary"
+            prop.max 100
+        ]
+
+    | Deferred.Failed error ->
+        Html.p [
+            prop.style [ style.color.red ]
+            prop.text error.Message
+        ]
+
+    | Deferred.Resolved (Error errorMessage) ->
+        Html.p [
+            prop.style [ style.color.red ]
+            prop.text errorMessage
+        ]
+
+    | Deferred.Resolved (Ok account) ->
+        Html.div [
+            prop.style [ style.marginBottom 10 ]
+            prop.children [
+                Html.i [
+                    prop.className "fas fa-user"
+                    prop.style [ style.marginRight 10 ]
+                ]
+
+                Html.span [
+                    prop.style [ style.fontSize 18 ]
+                    prop.text $"Logged in as {account.userName} (Subscription: {account.subscriptionName})"
+                ]
+            ]
+        ]
 
 [<ReactComponent>]
-let AzureResourceExplorer() =
+let AzureImporter() =
     let selectedResourceGroup, setResourceGroup = React.useState<string option>(None)
     let resourceGroups = React.useDeferred(serverApi.getResourceGroups(), [|  |])
     match resourceGroups with
@@ -722,6 +754,7 @@ let AzureResourceExplorer() =
 
     | Deferred.Resolved (Ok resourceGroups) ->
         React.fragment [
+            AzureAccount()
             SelectSearch.selectSearch [
                 selectSearch.options [
                     for rg in resourceGroups -> {
@@ -744,46 +777,6 @@ let AzureResourceExplorer() =
             | Some resourceGroup -> AzureResourcesWithinResourceGroup resourceGroup
         ]
 
-[<ReactComponent>]
-let AzureImporter() =
-    let account = React.useDeferred(serverApi.azureAccount(), [|  |])
-    match account with
-    | Deferred.HasNotStartedYet -> Html.none
-    | Deferred.InProgress ->
-        Html.progress [
-            prop.className "progress is-small is-primary"
-            prop.max 100
-        ]
-
-    | Deferred.Failed error ->
-        Html.p [
-            prop.style [ style.color.red ]
-            prop.text error.Message
-        ]
-
-    | Deferred.Resolved (Error errorMessage) ->
-        Html.p [
-            prop.style [ style.color.red ]
-            prop.text errorMessage
-        ]
-
-    | Deferred.Resolved (Ok account) ->
-        Html.div [
-            Html.i [
-                prop.className "fas fa-user"
-                prop.style [ style.marginRight 10 ]
-            ]
-
-            Html.span [
-                prop.style [ style.fontSize 18 ]
-                prop.text $"Logged in as {account.userName} (Subscription: {account.subscriptionName})"
-            ]
-
-            Html.br [ ]
-            Html.br [ ]
-
-            AzureResourceExplorer()
-        ]
 
 [<ReactComponent>]
 let AzureStartPage() =
@@ -947,8 +940,8 @@ let View() =
                     | [ "import-preview" ] ->
                         MarkdownContent """
 ### Pulumi Import Preview
-Use the import preview to experiment with the Pulumi Import feature.
-Edit the JSON content and preview the import results in different languages alonside the imported stack state.
+Use the import preview to experiment with [Pulumi Import](https://www.pulumi.com/docs/cli/commands/pulumi_import/).
+Edit the JSON content and preview the import results in different languages alongside the imported stack state.
                         """
                         ImportPreview("{ \"resources\": [] }")
                     | _ ->
@@ -956,16 +949,16 @@ Edit the JSON content and preview the import results in different languages alon
                             prop.text "Select a cloud provider to import resources from:"
                             prop.className "subtitle"
                         ]
- 
+
                         AwsTile()
                         AzureTile()
- 
+
                         Html.p [
                            prop.text "Experiment with Pulumi Import and preview results:"
                            prop.className "subtitle"
                            prop.style [ style.marginTop 10 ]
                         ]
- 
+
                         ImportPreviewTile()
                  ]
             ]
