@@ -113,6 +113,12 @@ let awsResourceId (resource: Amazon.ResourceExplorer2.Model.Resource) : string =
     | _ ->
         id
 
+/// Returns whether the AWS resource type requires the full ARN as the ID to be used in pulumi import
+let resourceRequiresFullArn resourceType =
+    List.contains resourceType [
+        "aws:iam/policy:Policy"
+    ]
+
 let awsResourceTags (resource: Amazon.ResourceExplorer2.Model.Resource) =
     resource.Properties
     |> Seq.tryFind (fun property -> property.Name = "tags" || property.Name = "Tags")
@@ -203,36 +209,44 @@ let searchAws (request: AwsSearchRequest) = task {
         let ancestorTypes = JObject()
         for resource in resources do
             let resourceJson = JObject()
-            match resource.resourceType.Split ":" with
-            | [| serviceName'; resourceType' |] ->
-                let serviceName, resourceType =
-                    match serviceName', resourceType' with
-                    | "rds", "subgrp" -> "rds", "subnetGroup"
-                    | "ec2", "volume" -> "ebs", "volume"
-                    | "ec2", "elastic-ip" -> "ec2", "eip"
-                    | "logs", "log-group" -> "cloudwatch", "logGroup"
-                    | _ -> serviceName', resourceType'
+            let pulumiType =
+                match resource.resourceType.Split ":" with
+                | [| serviceName'; resourceType' |] ->
+                    let serviceName, resourceType =
+                        match serviceName', resourceType' with
+                        | "rds", "subgrp" -> "rds", "subnetGroup"
+                        | "ec2", "volume" -> "ebs", "volume"
+                        | "ec2", "elastic-ip" -> "ec2", "eip"
+                        | "logs", "log-group" -> "cloudwatch", "logGroup"
+                        | _ -> serviceName', resourceType'
 
-                let pulumiType =
-                    match resource.resourceId with
-                    | SecurityGroupRule rule  ->
-                        if rule.IsEgress
-                        then "aws:vpc/securityGroupEgressRule:SecurityGroupEgressRule"
-                        else "aws:vpc/securityGroupIngressRule:SecurityGroupIngressRule"
-                    | _ ->
-                        $"aws:{serviceName}/{normalizeModuleName resourceType}:{normalizeTypeName resourceType}"
+                    let pulumiType' =
+                        match resource.resourceId with
+                        | SecurityGroupRule rule  ->
+                            if rule.IsEgress
+                            then "aws:vpc/securityGroupEgressRule:SecurityGroupEgressRule"
+                            else "aws:vpc/securityGroupIngressRule:SecurityGroupIngressRule"
+                        | _ ->
+                            $"aws:{serviceName}/{normalizeModuleName resourceType}:{normalizeTypeName resourceType}"
 
-                resourceJson.Add("type", pulumiType)
-                if not (ancestorTypes.ContainsKey pulumiType) then
-                    match Map.tryFind pulumiType AwsAncestorTypes.ancestorsByType with
-                    | Some ancestors ->
-                        ancestorTypes.Add(pulumiType, JArray ancestors)
-                    | None ->
-                        ()
-            | _ ->
-                resourceJson.Add("type", $"aws:{resource.resourceType}")
+                    if not (ancestorTypes.ContainsKey pulumiType') then
+                        match Map.tryFind pulumiType' AwsAncestorTypes.ancestorsByType with
+                        | Some ancestors ->
+                            ancestorTypes.Add(pulumiType', JArray ancestors)
+                        | None ->
+                            ()
 
-            resourceJson.Add("id", resource.resourceId)
+                    pulumiType'
+                | _ ->
+                    $"aws:{resource.resourceType}"
+
+            resourceJson.Add("type", pulumiType)
+
+            if resourceRequiresFullArn pulumiType then
+                resourceJson.Add("id", resource.arn)
+            else
+                resourceJson.Add("id", resource.resourceId)
+
             resourceJson.Add("name", resource.resourceId.Replace("-", "_"))
             resourcesJson.Add(resourceJson)
 
