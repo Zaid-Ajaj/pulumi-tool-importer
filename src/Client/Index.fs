@@ -217,7 +217,7 @@ let ImportPreview(importJson: string) =
 
             match tab with
             | "code" ->
-                Html.pre response.generatedCode
+                Highlight(language, [| Html.code response.generatedCode |])
             | "stack-state" ->
                 Html.pre response.stackState
             | "warnings" ->

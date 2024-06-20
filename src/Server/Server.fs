@@ -117,6 +117,11 @@ let awsResourceId (resource: Amazon.ResourceExplorer2.Model.Resource) : string =
 let resourceRequiresFullArn resourceType =
     List.contains resourceType [
         "aws:iam/policy:Policy"
+        "aws:alb/loadBalancer:LoadBalancer"
+        "aws:alb/listener:Listener"
+        "aws:alb/targetGroup:TargetGroup"
+        "aws:appflow/connectorProfile:ConnectorProfile"
+        "aws:appflow/flow:Flow"
     ]
 
 let awsResourceTags (resource: Amazon.ResourceExplorer2.Model.Resource) =
