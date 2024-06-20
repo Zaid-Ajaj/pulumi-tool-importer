@@ -224,4 +224,10 @@ let ancestorsByType = Map.ofList [
     "aws:sagemaker/notebookInstance:NotebookInstance", [
         "aws:ec2/securityGroup:SecurityGroup"
     ]
+    "aws:vpc/securityGroupEgressRule:SecurityGroupEgressRule", [
+        "aws:ec2/securityGroup:SecurityGroup"
+    ]
+    "aws:vpc/securityGroupIngressRule:SecurityGroupIngressRule", [
+        "aws:ec2/securityGroup:SecurityGroup"
+    ]
 ]

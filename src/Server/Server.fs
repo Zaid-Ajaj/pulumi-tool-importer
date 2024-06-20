@@ -146,15 +146,36 @@ let notEmpty (input: string) = not (String.IsNullOrWhiteSpace input)
 
 let searchAws (request: AwsSearchRequest) = task {
     try
-        let! results = searchAws' (SearchRequest(QueryString=request.queryString, MaxResults=1000)) None
+        let queryString =
+            if notEmpty request.tags then
+                let tags =
+                    request.tags.Split ";"
+                    |> Seq.choose (fun tagPair ->
+                        match tagPair.Split "=" with
+                        | [| key; value |] when notEmpty key && notEmpty value -> Some(key.Trim(), value.Trim())
+                        | _ -> None)
+                    |> Seq.filter (fun (key,value) -> not (request.queryString.Contains $"tag.{key}={value}"))
+                    |> Seq.filter (fun (key,value) -> not (request.queryString.Contains $"tag:{key}=\"{value}\""))
+                    |> Seq.map (fun (key,value) -> $"tag.{key}={value}")
+                    |> String.concat " "
+
+                $"{tags} {request.queryString}"
+            else
+                request.queryString
+
+        let! results = searchAws' (SearchRequest(QueryString=queryString, MaxResults=1000)) None
         let resourceTypesFromSearchResult =
             results
             |> Seq.map (fun resource -> resource.ResourceType)
             |> Seq.distinct
             |> set
 
+        let shouldQuerySecurityGroupRules =
+            resourceTypesFromSearchResult.Contains "ec2:security-group-rule"
+            || resourceTypesFromSearchResult.Contains "ec2:security-group"
+
         let! securityGroupRules = task {
-            if resourceTypesFromSearchResult.Contains "ec2:security-group-rule" then
+            if shouldQuerySecurityGroupRules then
                 let client = ec2Client()
                 let request = DescribeSecurityGroupRulesRequest()
                 let! response = client.DescribeSecurityGroupRulesAsync(request)
@@ -207,6 +228,7 @@ let searchAws (request: AwsSearchRequest) = task {
         let pulumiImportJson = JObject()
         let resourcesJson = JArray()
         let ancestorTypes = JObject()
+        let addedResourceIds = ResizeArray()
         for resource in resources do
             let resourceJson = JObject()
             let pulumiType =
@@ -246,9 +268,24 @@ let searchAws (request: AwsSearchRequest) = task {
                 resourceJson.Add("id", resource.arn)
             else
                 resourceJson.Add("id", resource.resourceId)
+                addedResourceIds.Add(resource.resourceId)
 
             resourceJson.Add("name", resource.resourceId.Replace("-", "_"))
             resourcesJson.Add(resourceJson)
+
+        // Add security group rules to import JSON if their parent security group is being imported
+        for securityGroupRuleId, securityGroupRule in Map.toList securityGroupRules do
+            let ruleNotAddedToImport = not (addedResourceIds.Contains securityGroupRuleId)
+            let parentSecurityGroupAdded = addedResourceIds.Contains securityGroupRule.GroupId
+            if ruleNotAddedToImport && parentSecurityGroupAdded then
+                let resourceJson = JObject()
+                if securityGroupRule.IsEgress then
+                    resourceJson.Add("type", "aws:vpc/securityGroupEgressRule:SecurityGroupEgressRule")
+                else
+                    resourceJson.Add("type", "aws:vpc/securityGroupIngressRule:SecurityGroupIngressRule")
+                resourceJson.Add("id", securityGroupRuleId)
+                resourceJson.Add("name", securityGroupRuleId.Replace("-", "_"))
+                resourcesJson.Add(resourceJson)
 
         pulumiImportJson.Add("resources", resourcesJson)
         if ancestorTypes.Count > 0 then

@@ -15,6 +15,14 @@ let inferAncestorTypes(schemaVersion: string) =
         "aws:lb/listener:Listener", [
             "aws:lb/targetGroup:TargetGroup"
         ]
+
+        "aws:vpc/securityGroupEgressRule:SecurityGroupEgressRule", [
+            "aws:ec2/securityGroup:SecurityGroup"
+        ]
+
+        "aws:vpc/securityGroupIngressRule:SecurityGroupIngressRule", [
+            "aws:ec2/securityGroup:SecurityGroup"
+        ]
     ]
 
     let ancestorTypesByProperty = Map.ofList [

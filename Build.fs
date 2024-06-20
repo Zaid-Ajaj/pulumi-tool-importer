@@ -156,6 +156,8 @@ Target.create "CreateAndPublishArtifacts" (fun _ ->
 )
 
 Target.create "Clean" (fun _ ->
+    Shell.cleanDir (Path.Combine(serverPath, "bin"))
+    Shell.cleanDir (Path.Combine(serverPath, "obj"))
     Shell.cleanDir deployPath
     run dotnet "fable clean --yes" clientPath // Delete *.fs.js files created by Fable
 )
