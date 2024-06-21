@@ -37,6 +37,7 @@ type AwsResource = {
 type AwsSearchResponse = {
     resources: AwsResource list
     pulumiImportJson: string
+    warnings: string list
 }
 
 type AzureResource = {

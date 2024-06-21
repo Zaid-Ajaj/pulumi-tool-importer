@@ -113,16 +113,18 @@ let awsResourceId (resource: Amazon.ResourceExplorer2.Model.Resource) : string =
     | _ ->
         id
 
-/// Returns whether the AWS resource type requires the full ARN as the ID to be used in pulumi import
-let resourceRequiresFullArn resourceType =
-    List.contains resourceType [
-        "aws:iam/policy:Policy"
-        "aws:alb/loadBalancer:LoadBalancer"
-        "aws:alb/listener:Listener"
-        "aws:alb/targetGroup:TargetGroup"
-        "aws:appflow/connectorProfile:ConnectorProfile"
-        "aws:appflow/flow:Flow"
-    ]
+/// Specifies which AWS resource type requires the full ARN as the ID to be used in pulumi import
+let resourcesRequiringFullArn = set [
+    "aws:iam/policy:Policy"
+    "aws:alb/loadBalancer:LoadBalancer"
+    "aws:alb/listener:Listener"
+    "aws:alb/listenerRule:ListenerRule"
+    "aws:alb/targetGroup:TargetGroup"
+    "aws:appflow/connectorProfile:ConnectorProfile"
+    "aws:appflow/flow:Flow"
+    "aws:iam/openIdConnectProvider:OpenIdConnectProvider"
+    "aws:iam/virtualMfaDevice:VirtualMfaDevice"
+]
 
 let awsResourceTags (resource: Amazon.ResourceExplorer2.Model.Resource) =
     resource.Properties
@@ -148,6 +150,59 @@ let awsResourceTags (resource: Amazon.ResourceExplorer2.Model.Resource) =
     |> Map.ofSeq
 
 let notEmpty (input: string) = not (String.IsNullOrWhiteSpace input)
+
+let awsTypeMapping = function
+    | "rds", "subgrp" -> "rds", "subnetGroup"
+    | "ec2", "volume" -> "ebs", "volume"
+    | "ec2", "elastic-ip" -> "ec2", "eip"
+    | "ec2", "dhcp-options" -> "ec2", "vpcDhcpOptions"
+    | "ec2", "ipam" -> "ec2", "vpcIpam"
+    | "ec2", "ipam-scope" -> "ec2", "vpcIpamScope"
+    | "ec2", "image" -> "ec2", "ami"
+    | "ec2", "snapshot" -> "ebs", "snapshot"
+    | "ec2", "transit-gateway-route-table" -> "ec2transitgateway", "routeTable"
+    | "ec2", "vpc-flow-log" -> "ec2", "flowLog"
+    | "ec2", "natgateway" -> "ec2", "natGateway"
+    | "ec2", "spot-instances-request" -> "ec2", "spotInstanceRequest"
+    | "logs", "log-group" -> "cloudwatch", "logGroup"
+    | "acm-pca", "certificate-authority" -> "acmpca", "certificateAuthority"
+    | "apigateway", "restapis" -> "apigateway", "restApi"
+    | "athena", "datacatalog" -> "athena", "dataCatalog"
+    | "codestar-connections", "connection" -> "codestarconnections", "connection"
+    | "cognito-idp", "userpool" -> "cognito", "userPool"
+    | "elasticache", "parametergroup" -> "elasticache", "parameterGroup"
+    | "elasticache", "subnetgroup" -> "elasticache", "subnetGroup"
+    | "elasticbeanstalk", "applicationversion" -> "elasticbeanstalk", "applicationVersion"
+    | "events", "event-bus" -> "cloudwatch", "eventBus"
+    | "events", "rule" -> "cloudwatch", "eventRule"
+    | "iam", "oidc-provider" -> "iam", "openIdConnectProvider"
+    | "iam", "mfa" -> "iam", "virtualMfaDevice"
+    | "memorydb", "parametergroup" -> "memorydb", "parameterGroup"
+    | "rds", "cluster-pg" -> "rds", "cluster"
+    | "rds", "og" -> "rds", "optionGroup"
+    | "rds", "pg" -> "rds", "parameterGroup"
+    | "rds", "secgrp" -> "rds", "subnetGroup" //TODO: verify this
+    | "redshift", "parametergroup" -> "redshift", "parameterGroup"
+    | "redshift", "subnetgroup" -> "redshift", "subnetGroup"
+    | "resource-explorer-2", "index" -> "resourceexplorer", "index"
+    | "resource-groups", "group" -> "resourcegroups", "group"
+    | "route53", "hostedzone" -> "route53", "zone"
+    | "s3", "accesspoint" -> "s3", "accessPoint"
+    | "s3", "storage-lens" -> "s3control", "storageLensConfiguration"
+    | "ssm", "automation-execution" -> "ssm", "document"
+    | "elasticloadbalancing", "listener-rule/app" -> "alb", "listenerRule"
+    | "elasticfilesystem", "file-system" -> "efs", "fileSystem"
+    | "elasticloadbalancing", "listener/app" -> "alb", "listener"
+    | "elasticloadbalancing", "loadbalancer/app" -> "alb", "loadBalancer"
+    | "elasticloadbalancing", "targetgroup" -> "alb", "targetGroup"
+    | service, resourceType -> service, resourceType
+
+// TODO: find out which resource correspond to these types
+let skipAwsResource = function
+    | "ssm:automation-execution" -> true
+    | "ssm:managed-instance" -> true
+    | "forecast:dataset-group" -> true
+    | _ -> false
 
 let searchAws (request: AwsSearchRequest) = task {
     try
@@ -194,8 +249,14 @@ let searchAws (request: AwsSearchRequest) = task {
             | true, rule -> Some rule
             | _ -> None
 
+        // skip some of the resources that we don't want to import
+        // or we don't know what resources map to them
+        let filteredResults =
+            results
+            |> Seq.filter (fun resource -> not (skipAwsResource resource.ResourceType))
+
         let resources = [
-            for resource in results do
+            for resource in filteredResults do
                 let resourceId = awsResourceId resource
                 let tags = awsResourceTags resource
                 if request.tags <> "" then
@@ -234,19 +295,13 @@ let searchAws (request: AwsSearchRequest) = task {
         let resourcesJson = JArray()
         let ancestorTypes = JObject()
         let addedResourceIds = ResizeArray()
+        let warnings = ResizeArray()
         for resource in resources do
             let resourceJson = JObject()
             let pulumiType =
                 match resource.resourceType.Split ":" with
                 | [| serviceName'; resourceType' |] ->
-                    let serviceName, resourceType =
-                        match serviceName', resourceType' with
-                        | "rds", "subgrp" -> "rds", "subnetGroup"
-                        | "ec2", "volume" -> "ebs", "volume"
-                        | "ec2", "elastic-ip" -> "ec2", "eip"
-                        | "logs", "log-group" -> "cloudwatch", "logGroup"
-                        | _ -> serviceName', resourceType'
-
+                    let serviceName, resourceType = awsTypeMapping (serviceName', resourceType')
                     let pulumiType' =
                         match resource.resourceId with
                         | SecurityGroupRule rule  ->
@@ -268,8 +323,10 @@ let searchAws (request: AwsSearchRequest) = task {
                     $"aws:{resource.resourceType}"
 
             resourceJson.Add("type", pulumiType)
+            if not (AwsAncestorTypes.availableTypes.Contains pulumiType) then
+                warnings.Add $"AWS resource '{resource.resourceType}' maps to a non-existing Pulumi type '{pulumiType}'"
 
-            if resourceRequiresFullArn pulumiType then
+            if resourcesRequiringFullArn.Contains pulumiType then
                 resourceJson.Add("id", resource.arn)
             else
                 resourceJson.Add("id", resource.resourceId)
@@ -299,6 +356,7 @@ let searchAws (request: AwsSearchRequest) = task {
         return Ok {
             resources = resources
             pulumiImportJson = pulumiImportJson.ToString(Formatting.Indented)
+            warnings = warnings |> Seq.distinct |> Seq.sortBy id |> List.ofSeq
         }
     with
     | error ->

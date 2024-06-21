@@ -368,12 +368,22 @@ for AWS resource explorer
 
                         Html.li [
                             prop.children [
-                                Html.a [ Html.span "Import JSON" ]
+                                Html.a [ Html.span "Pulumi Import JSON" ]
                             ]
                             prop.onClick (fun _ -> setCurrentTab "import-json")
                             if currentTab = "import-json" then
                                 prop.className "is-active"
                         ]
+
+                        if not (List.isEmpty response.warnings) then
+                            Html.li [
+                                prop.children [
+                                    Html.a [ Html.span $"Warnings ({List.length response.warnings})" ]
+                                ]
+                                prop.onClick (fun _ -> setCurrentTab "warnings")
+                                if currentTab = "warnings" then
+                                    prop.className "is-active"
+                            ]
 
                         Html.li [
                             prop.children [
@@ -396,6 +406,9 @@ for AWS resource explorer
                         Html.code response.pulumiImportJson
                     ]
                 ]
+
+            | "warnings" ->
+                Html.ul [ for warning in response.warnings -> Html.li warning ]
 
             | "resources" ->
                 Html.table [
@@ -607,7 +620,7 @@ let AzureResourcesWithinResourceGroup(resourceGroup: string) =
 
                         Html.li [
                             prop.children [
-                                Html.a [ Html.span "Import JSON" ]
+                                Html.a [ Html.span "Pulumi Import JSON" ]
                             ]
                             prop.onClick (fun _ -> setCurrentTab "import-json")
                             if currentTab = "import-json" then
