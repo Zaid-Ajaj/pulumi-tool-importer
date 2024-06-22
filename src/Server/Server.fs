@@ -624,7 +624,16 @@ let importPreview (request: ImportPreviewRequest) = task {
                 pulumiImportOutput.StandardOutput.Split "\n"
                 |> Array.filter (fun line -> line.Contains "warning:")
                 |> Array.toList
-            Ok { generatedCode = generatedCode; stackState = stackState; warnings = warnings }
+
+            Ok {
+                generatedCode = generatedCode
+                stackState = stackState
+                warnings = warnings
+                standardError =
+                    if String.IsNullOrWhiteSpace generatedCode
+                    then Some pulumiImportOutput.StandardError
+                    else None
+            }
 
         return response
     with

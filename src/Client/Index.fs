@@ -108,7 +108,7 @@ let PulumiTitleWithVersion() =
 
 [<ReactComponent>]
 let ImportPreview(importJson: string) =
-    let pulumiImportJson, setPulumiImportJson = React.useState importJson
+    let importJsonInputRef = React.useInputRef()
     let tab, setTab = React.useState "code"
     let language, setLanguage = React.useState "typescript"
     let preview, setPreview = React.useState(Deferred.HasNotStartedYet)
@@ -152,10 +152,13 @@ let ImportPreview(importJson: string) =
                     prop.className "button is-primary"
                     prop.style [ style.height 36; style.top -5 ]
                     prop.disabled (Deferred.inProgress preview)
-                    prop.onClick (fun _ -> importPreview {
-                        language = language
-                        pulumiImportJson = pulumiImportJson
-                    })
+                    prop.onClick (fun _ ->
+                        importJsonInputRef.current
+                        |> Option.iter (fun importJsonInput ->
+                            importPreview {
+                                language = language
+                                pulumiImportJson = importJsonInput.value
+                            }))
                 ]
             ]
         ]
@@ -169,15 +172,15 @@ let ImportPreview(importJson: string) =
             ]
 
             prop.children [
-                Html.summary "Edit Import JSON:"
+                Html.summary "Edit Pulumi Import JSON:"
                 Html.div [
                     prop.className "control"
                     prop.children [
                          Html.textarea [
                             prop.style [ style.height 350 ]
                             prop.className "input"
-                            prop.value pulumiImportJson
-                            prop.onChange setPulumiImportJson
+                            prop.ref importJsonInputRef
+                            prop.defaultValue importJson
                         ]
                     ]
                 ]
@@ -216,6 +219,9 @@ let ImportPreview(importJson: string) =
                 Tab("Stack state", "stack-state", tab, setTab)
                 if not (List.isEmpty response.warnings) then
                     Tab($"Warnings ({List.length response.warnings})", "warnings", tab, setTab)
+                match response.standardError with
+                | Some error -> Tab("Import Errors", "error", tab, setTab)
+                | None -> ()
             ]
 
             match tab with
@@ -227,6 +233,11 @@ let ImportPreview(importJson: string) =
                 Html.ul [
                     for warning in response.warnings do
                     Html.li warning
+                ]
+            | "error" ->
+                Html.p [
+                    prop.style [ style.color.red ]
+                    prop.text (Option.defaultValue "" response.standardError)
                 ]
             | _ ->
                 Html.none
