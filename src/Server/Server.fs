@@ -3,6 +3,8 @@ module Server
 open System
 open System.Diagnostics
 open System.IO
+open Amazon.CloudFormation
+open Amazon.CloudFormation.Model
 open Amazon.EC2.Model
 open Fable.Remoting.Server
 open Fable.Remoting.Giraffe
@@ -35,6 +37,10 @@ let ec2Client() =
 let securityTokenServiceClient() =
     let credentials = EnvironmentVariablesAWSCredentials()
     new AmazonSecurityTokenServiceClient(credentials)
+
+let cloudFormationClient() =
+    let credentials = EnvironmentVariablesAWSCredentials()
+    new AmazonCloudFormationClient(credentials)
 
 let armClient() = ArmClient(AzureCliCredential())
 
@@ -113,19 +119,6 @@ let awsResourceId (resource: Amazon.ResourceExplorer2.Model.Resource) : string =
     | _ ->
         id
 
-/// Specifies which AWS resource type requires the full ARN as the ID to be used in pulumi import
-let resourcesRequiringFullArn = set [
-    "aws:iam/policy:Policy"
-    "aws:alb/loadBalancer:LoadBalancer"
-    "aws:alb/listener:Listener"
-    "aws:alb/listenerRule:ListenerRule"
-    "aws:alb/targetGroup:TargetGroup"
-    "aws:appflow/connectorProfile:ConnectorProfile"
-    "aws:appflow/flow:Flow"
-    "aws:iam/openIdConnectProvider:OpenIdConnectProvider"
-    "aws:iam/virtualMfaDevice:VirtualMfaDevice"
-]
-
 let awsResourceTags (resource: Amazon.ResourceExplorer2.Model.Resource) =
     resource.Properties
     |> Seq.tryFind (fun property -> property.Name = "tags" || property.Name = "Tags")
@@ -203,6 +196,44 @@ let skipAwsResource = function
     | "ssm:managed-instance" -> true
     | "forecast:dataset-group" -> true
     | _ -> false
+
+type AwsImportDocs = {
+    url: string
+    moduleName: string
+    resourceName: string
+}
+
+let awsImportDocs (pulumiType: string) =
+    match pulumiType.Split ":" with
+    | [| _; moduleName; _ |] ->
+        match moduleName.Split "/" with
+        | [| moduleName; resourceName |] ->
+            let url = $"https://www.pulumi.com/registry/packages/aws/api-docs/{moduleName.ToLower()}/{resourceName.ToLower()}"
+            Some {
+                url = url
+                moduleName = moduleName
+                resourceName = resourceName
+            }
+        | _ -> None
+    | _ -> None
+
+let importWarningDocsMarkdown (pulumiType: string, resourceId: string) =
+    let docsInfo =
+        awsImportDocs pulumiType
+        |> Option.map (fun docs -> $"See [docs]({docs.url}) for more information about **aws.{docs.moduleName}.{docs.resourceName}** resource.")
+        |> Option.defaultValue ""
+
+    let warning = $"""Resource '**{pulumiType}**' with used its ID '**{resourceId}**' as the import ID.
+However, this resource uses an _import format_ which might need more information than just the ID of that resource.
+Consider manually adjusting the import ID in the Pulumi Import JSON before running the actual import.
+
+Examples of import formats for this resource:
+```bash
+{String.concat Environment.NewLine AwsSchemaTypes.resourcesWithOddImportFormat[pulumiType]}
+```
+"""
+
+    warning + docsInfo
 
 let searchAws (request: AwsSearchRequest) = task {
     try
@@ -312,7 +343,7 @@ let searchAws (request: AwsSearchRequest) = task {
                             $"aws:{serviceName}/{normalizeModuleName resourceType}:{normalizeTypeName resourceType}"
 
                     if not (ancestorTypes.ContainsKey pulumiType') then
-                        match Map.tryFind pulumiType' AwsAncestorTypes.ancestorsByType with
+                        match Map.tryFind pulumiType' AwsSchemaTypes.ancestorsByType with
                         | Some ancestors ->
                             ancestorTypes.Add(pulumiType', JArray ancestors)
                         | None ->
@@ -323,14 +354,18 @@ let searchAws (request: AwsSearchRequest) = task {
                     $"aws:{resource.resourceType}"
 
             resourceJson.Add("type", pulumiType)
-            if not (AwsAncestorTypes.availableTypes.Contains pulumiType) then
+            if not (AwsSchemaTypes.availableTypes.Contains pulumiType) then
                 warnings.Add $"AWS resource '{resource.resourceType}' maps to a non-existing Pulumi type '{pulumiType}'"
 
-            if resourcesRequiringFullArn.Contains pulumiType then
+            if AwsSchemaTypes.typeRequiresFullArnToImport.Contains pulumiType then
                 resourceJson.Add("id", resource.arn)
             else
                 resourceJson.Add("id", resource.resourceId)
                 addedResourceIds.Add(resource.resourceId)
+                if AwsSchemaTypes.resourcesWithOddImportFormat.ContainsKey pulumiType then
+                    // Add a warning to show that this resource has an odd import format
+                    // and the user might need to manually adjust the import ID in the import JSON
+                    warnings.Add(importWarningDocsMarkdown(pulumiType, resource.resourceId))
 
             resourceJson.Add("name", resource.resourceId.Replace("-", "_"))
             resourcesJson.Add(resourceJson)

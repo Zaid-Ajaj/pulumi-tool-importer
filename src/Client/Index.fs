@@ -51,6 +51,9 @@ let Div(className: string, children: ReactElement list) =
         prop.children children
     ]
 
+[<Emit "navigator.clipboard.writeText($0)">]
+let copyToClipboard (text: string) : unit = jsNative
+
 [<ReactComponent(import="default", from="react-highlight")>]
 let Highlight(className: string, children: ReactElement array) : ReactElement = jsNative
 
@@ -408,7 +411,9 @@ for AWS resource explorer
                 ]
 
             | "warnings" ->
-                Html.ul [ for warning in response.warnings -> Html.li warning ]
+                response.warnings
+                |> String.concat "\n\n---\n\n"
+                |> MarkdownContent
 
             | "resources" ->
                 Html.table [
@@ -423,6 +428,7 @@ for AWS resource explorer
                         Html.thead [
                             Html.tr [
                                 Html.th "Resource ID"
+                                Html.th "ARN"
                                 Html.th "Type"
                                 Html.th "Region"
                                 Html.th "Service"
@@ -437,8 +443,17 @@ for AWS resource explorer
                                 Html.td [
                                     prop.text resource.resourceId
                                     prop.style [
-                                        style.maxWidth 400
+                                        style.maxWidth 300
                                         style.overflow.hidden
+                                    ]
+                                ]
+
+                                Html.td [
+                                    Html.button [
+                                        prop.text "Copy ARN"
+                                        prop.className "button is-small is-primary"
+                                        prop.style [ style.marginLeft 10 ]
+                                        prop.onClick (fun _ -> copyToClipboard resource.arn)
                                     ]
                                 ]
 
@@ -447,7 +462,8 @@ for AWS resource explorer
                                 Html.td resource.service
                                 Html.td [
                                     prop.style [
-                                        style.maxWidth 400
+                                        style.fontSize 12
+                                        style.maxWidth 200
                                         style.overflow.hidden
                                     ]
 

@@ -210,8 +210,8 @@ Target.create "Format" (fun _ ->
     run dotnet "fantomas . -r" "src"
 )
 
-Target.create "GenerateAwsAncestorTypes" (fun _ ->
-    let outputPath = Path.Combine(serverPath, "AwsAncestorTypes.fs")
+Target.create "GenerateAwsSchemaTypes" (fun _ ->
+    let outputPath = Path.Combine(serverPath, "AwsSchemaTypes.fs")
     let awsSchemaVersion = "6.35.0"
     let content = Aws.generateLookupModule(awsSchemaVersion)
     File.WriteAllText(outputPath, content)
