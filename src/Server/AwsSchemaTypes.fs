@@ -1851,7 +1851,7 @@ let typeRequiresFullArnToImport = set [|
     "aws:xray/group:Group"
 |]
 
-// The following 179 resources could require an odd format to import
+// The following 176 resources could require an odd format to import
 // an odd format being something other than just the resource ID or resource ARN
 
 let resourcesWithOddImportFormat = Map.ofList [
@@ -2051,9 +2051,6 @@ let resourcesWithOddImportFormat = Map.ofList [
     ]
     "aws:cognito/userGroup:UserGroup", [
         "$ pulumi import aws:cognito/userGroup:UserGroup group us-east-1_vG78M4goG/user-group"
-    ]
-    "aws:cognito/userPool:UserPool", [
-        "$ pulumi import aws:cognito/userPool:UserPool pool us-west-2_abc123"
     ]
     "aws:cognito/userPoolClient:UserPoolClient", [
         "$ pulumi import aws:cognito/userPoolClient:UserPoolClient client us-west-2_abc123/3ho4ek12345678909nh3fmhpko"
@@ -2357,9 +2354,6 @@ let resourcesWithOddImportFormat = Map.ofList [
     "aws:signer/signingProfilePermission:SigningProfilePermission", [
         "$ pulumi import aws:signer/signingProfilePermission:SigningProfilePermission test_signer_signing_profile_permission prod_profile_DdW3Mk1foYL88fajut4mTVFGpuwfd4ACO6ANL0D1uIj7lrn8adK/ProdAccountStartSigningJobStatementId"
     ]
-    "aws:sqs/queue:Queue", [
-        "$ pulumi import aws:sqs/queue:Queue public_queue https://queue.amazonaws.com/80398EXAMPLE/MyQueue"
-    ]
     "aws:sqs/queuePolicy:QueuePolicy", [
         "$ pulumi import aws:sqs/queuePolicy:QueuePolicy test https://queue.amazonaws.com/0123456789012/myqueue"
     ]
@@ -2374,9 +2368,6 @@ let resourcesWithOddImportFormat = Map.ofList [
     ]
     "aws:ssm/maintenanceWindowTask:MaintenanceWindowTask", [
         "$ pulumi import aws:ssm/maintenanceWindowTask:MaintenanceWindowTask task &lt;window_id&gt;/&lt;window_task_id&gt;"
-    ]
-    "aws:ssm/parameter:Parameter", [
-        "$ pulumi import aws:ssm/parameter:Parameter my_param /my_path/my_paramname"
     ]
     "aws:transfer/access:Access", [
         "$ pulumi import aws:transfer/access:Access example s-12345678/S-1-1-12-1234567890-123456789-1234567890-1234"

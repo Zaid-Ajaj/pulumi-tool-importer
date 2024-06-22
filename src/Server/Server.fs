@@ -5,7 +5,11 @@ open System.Diagnostics
 open System.IO
 open Amazon.CloudFormation
 open Amazon.CloudFormation.Model
+open Amazon.CloudWatch
+open Amazon.CloudWatchEvents
 open Amazon.EC2.Model
+open Amazon.SQS
+open Amazon.SQS.Model
 open Fable.Remoting.Server
 open Fable.Remoting.Giraffe
 open Newtonsoft.Json
@@ -41,6 +45,16 @@ let securityTokenServiceClient() =
 let cloudFormationClient() =
     let credentials = EnvironmentVariablesAWSCredentials()
     new AmazonCloudFormationClient(credentials)
+
+// https://aws.amazon.com/sqs AWS Message Queue Service
+let sqsClient() =
+    let credentials = EnvironmentVariablesAWSCredentials()
+    new AmazonSQSClient(credentials)
+
+
+let cloudWatchEventsClient() =
+    let credentials = EnvironmentVariablesAWSCredentials()
+    new AmazonCloudWatchEventsClient(credentials)
 
 let armClient() = ArmClient(AzureCliCredential())
 
@@ -107,10 +121,10 @@ let normalizeModuleName (input: string) =
         else capitalize part ]
     |> String.concat ""
 
-let awsResourceId (resource: Amazon.ResourceExplorer2.Model.Resource) : string =
-    let arn = Arn.Parse resource.Arn
+let awsIdFromArn (arn: string, resourceType: string) =
+    let arn = Arn.Parse(arn)
     let id = arn.Resource
-    match resource.ResourceType.Split ":" with
+    match resourceType.Split ":" with
     | [| serviceName; resourceType |] ->
         if id.StartsWith resourceType then
             id.Substring(resourceType.Length + 1)
@@ -118,6 +132,9 @@ let awsResourceId (resource: Amazon.ResourceExplorer2.Model.Resource) : string =
             id
     | _ ->
         id
+
+let awsResourceId (resource: Amazon.ResourceExplorer2.Model.Resource) : string =
+    awsIdFromArn(resource.Arn, resource.ResourceType)
 
 let awsResourceTags (resource: Amazon.ResourceExplorer2.Model.Resource) =
     resource.Properties
@@ -157,6 +174,7 @@ let awsTypeMapping = function
     | "ec2", "vpc-flow-log" -> "ec2", "flowLog"
     | "ec2", "natgateway" -> "ec2", "natGateway"
     | "ec2", "spot-instances-request" -> "ec2", "spotInstanceRequest"
+    | "ec2", "transit-gateway" -> "ec2transitgateway", "transitGateway"
     | "logs", "log-group" -> "cloudwatch", "logGroup"
     | "acm-pca", "certificate-authority" -> "acmpca", "certificateAuthority"
     | "apigateway", "restapis" -> "apigateway", "restApi"
@@ -188,6 +206,9 @@ let awsTypeMapping = function
     | "elasticloadbalancing", "listener/app" -> "alb", "listener"
     | "elasticloadbalancing", "loadbalancer/app" -> "alb", "loadBalancer"
     | "elasticloadbalancing", "targetgroup" -> "alb", "targetGroup"
+    | "aps", "workspace" -> "amp", "workspace"
+    | "cloudformation", "stackset" -> "cloudformation", "stackSet"
+    | "cloudwatch", "alarm" -> "cloudwatch", "metricAlarm"
     | service, resourceType -> service, resourceType
 
 // TODO: find out which resource correspond to these types
@@ -280,6 +301,33 @@ let searchAws (request: AwsSearchRequest) = task {
             | true, rule -> Some rule
             | _ -> None
 
+        let! sqsQueueUrls = task {
+            if resourceTypesFromSearchResult.Contains "sqs:queue" then
+                let client = sqsClient()
+                let! response = client.ListQueuesAsync(queueNamePrefix="")
+                return response.QueueUrls
+            else
+                return ResizeArray()
+        }
+
+        let (|SqsQueue|_|) (resource: AwsResource) =
+            sqsQueueUrls
+            |> Seq.tryFind (fun url -> url.EndsWith resource.resourceId)
+
+        let! cloudwatchEventRules = task {
+            if resourceTypesFromSearchResult.Contains "events:rule" then
+                let client = cloudWatchEventsClient()
+                let! response = client.ListRulesAsync()
+                return Map.ofList [ for rule in response.Rules -> rule.Arn, rule ]
+            else
+                return Map.empty
+        }
+
+        let (|CloudWatchEventRule|_|) (resource: AwsResource) =
+            match cloudwatchEventRules.TryGetValue resource.arn with
+            | true, rule -> Some rule
+            | _ -> None
+
         // skip some of the resources that we don't want to import
         // or we don't know what resources map to them
         let filteredResults =
@@ -360,12 +408,18 @@ let searchAws (request: AwsSearchRequest) = task {
             if AwsSchemaTypes.typeRequiresFullArnToImport.Contains pulumiType then
                 resourceJson.Add("id", resource.arn)
             else
-                resourceJson.Add("id", resource.resourceId)
-                addedResourceIds.Add(resource.resourceId)
-                if AwsSchemaTypes.resourcesWithOddImportFormat.ContainsKey pulumiType then
-                    // Add a warning to show that this resource has an odd import format
-                    // and the user might need to manually adjust the import ID in the import JSON
-                    warnings.Add(importWarningDocsMarkdown(pulumiType, resource.resourceId))
+                match resource with
+                | SqsQueue queueUrl ->
+                    resourceJson.Add("id", queueUrl)
+                | CloudWatchEventRule eventRule ->
+                    resourceJson.Add("id", $"{eventRule.EventBusName}/{eventRule.Name}")
+                | _ ->
+                    resourceJson.Add("id", resource.resourceId)
+                    addedResourceIds.Add(resource.resourceId)
+                    if AwsSchemaTypes.resourcesWithOddImportFormat.ContainsKey pulumiType then
+                        // Add a warning to show that this resource has an odd import format
+                        // and the user might need to manually adjust the import ID in the import JSON
+                        warnings.Add(importWarningDocsMarkdown(pulumiType, resource.resourceId))
 
             resourceJson.Add("name", resource.resourceId.Replace("-", "_"))
             resourcesJson.Add(resourceJson)

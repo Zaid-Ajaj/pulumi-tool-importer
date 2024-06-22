@@ -168,6 +168,8 @@ let generateLookupModule(schemaVersion) =
         "aws:ec2/securityGroupRule:SecurityGroupRule"
         // these look like they just need an ID
         "aws:dax/subnetGroup:SubnetGroup"
+        "aws:ssm/parameter:Parameter"
+        "aws:cognito/userPool:UserPool"
         "aws:cloudfront/function:Function"
         "aws:cloudfront/keyValueStore:KeyValueStore"
         "aws:cloudwatch/dashboard:Dashboard"
@@ -191,6 +193,8 @@ let generateLookupModule(schemaVersion) =
         "aws:opensearch/domainSamlOptions:DomainSamlOptions"
         "aws:schemas/registry:Registry"
         "aws:ses/activeReceiptRuleSet:ActiveReceiptRuleSet"
+        // these we have handled in the importer
+        "aws:sqs/queue:Queue"
     ]
 
     let oddlyFormattedImportSpecs =
