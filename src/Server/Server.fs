@@ -58,17 +58,6 @@ let cloudWatchEventsClient() =
 
 let armClient() = ArmClient(AzureCliCredential())
 
-let getResourceGroups() = task {
-    try
-        let subscription = armClient().GetDefaultSubscription()
-        let groups = subscription.GetResourceGroups()
-        return Ok [ for group in groups -> group.Id.Name ]
-    with
-    | ex ->
-        let errorType = ex.GetType().Name
-        return Error $"{errorType}: {ex.Message}"
-}
-
 let getCallerIdentity() = task {
     try
         let client = securityTokenServiceClient()
@@ -510,11 +499,32 @@ let azureAccount() = task {
         return Error $"{errorType}: {error.Message}"
 }
 
+let getDefaultSubscription() = task {
+    let! account = azureAccount() |> Async.AwaitTask
+    return match account with
+           | (Ok t) ->
+               let subscriptionId = t.subscriptionId
+               let subscriptions = armClient().GetSubscriptions() |> List.ofSeq |> List.filter (fun sub -> sub.Id.SubscriptionId = subscriptionId)
+               match subscriptions |> Seq.length with
+               | 1 -> List.head(subscriptions)
+               | _ -> raise (new InvalidOperationException("Cannot get default subscription"))
+           | _ -> raise (new InvalidOperationException("Cannot get azure account, use `az login`, then `az account show` "))
+}
 
+let getResourceGroups() = task {
+    try
+        let! subscription = getDefaultSubscription() |> Async.AwaitTask
+        let groups = subscription.GetResourceGroups()
+        return Ok ([ for group in groups -> group.Id.Name ] |> List.sortBy (fun name -> name.ToLower()))
+    with
+    | ex ->
+        let errorType = ex.GetType().Name
+        return Error $"{errorType}: {ex.Message}"
+}
 
 let getResourcesUnderResourceGroup (resourceGroupName: string) = task {
     try
-        let subscription = armClient().GetDefaultSubscription()
+        let! subscription = getDefaultSubscription() |> Async.AwaitTask
         let resourceGroup = subscription.GetResourceGroup(resourceGroupName)
         if not resourceGroup.HasValue then
             return Error "Could not find the resource group"
