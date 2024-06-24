@@ -500,22 +500,25 @@ let azureAccount() = task {
 }
 
 let getDefaultSubscription() = task {
-    let! account = azureAccount() |> Async.AwaitTask
-    return match account with
-           | (Ok t) ->
-               let subscriptionId = t.subscriptionId
-               let subscriptions = armClient().GetSubscriptions() |> List.ofSeq |> List.filter (fun sub -> sub.Id.SubscriptionId = subscriptionId)
-               match subscriptions |> Seq.length with
-               | 1 -> List.head(subscriptions)
-               | _ -> raise (new InvalidOperationException("Cannot get default subscription"))
-           | _ -> raise (new InvalidOperationException("Cannot get azure account, use `az login`, then `az account show` "))
+    match! azureAccount() with
+    | Ok account ->
+        let defaultSubscription =
+            armClient().GetSubscriptions()
+                |> Seq.tryFind (fun sub -> sub.Id.SubscriptionId = account.subscriptionId)
+                |> Option.defaultValue (armClient().GetDefaultSubscription())
+        return Ok defaultSubscription
+    | Error error ->
+        return Error $"Error occurred while getting the default subscription: {error}"
 }
 
 let getResourceGroups() = task {
     try
-        let! subscription = getDefaultSubscription() |> Async.AwaitTask
-        let groups = subscription.GetResourceGroups()
-        return Ok ([ for group in groups -> group.Id.Name ] |> List.sortBy (fun name -> name.ToLower()))
+        let! subscription = getDefaultSubscription()
+        return match subscription with
+               | Ok subscriptionResource ->
+                    let groups = subscriptionResource.GetResourceGroups()
+                    Ok ([ for group in groups -> group.Id.Name ] |> List.sortBy (fun name -> name.ToLower()))
+               | Error error -> Error $"Could not find resource gropus: {error}"
     with
     | ex ->
         let errorType = ex.GetType().Name
@@ -524,11 +527,10 @@ let getResourceGroups() = task {
 
 let getResourcesUnderResourceGroup (resourceGroupName: string) = task {
     try
-        let! subscription = getDefaultSubscription() |> Async.AwaitTask
-        let resourceGroup = subscription.GetResourceGroup(resourceGroupName)
-        if not resourceGroup.HasValue then
-            return Error "Could not find the resource group"
-        else
+        let! subscription = getDefaultSubscription()
+        match subscription with
+        | Ok subscriptionResource ->
+            let resourceGroup = subscriptionResource.GetResourceGroup(resourceGroupName)
             let resources: AzureResource list = [
                 for page in resourceGroup.Value.GetGenericResources().AsPages() do
                 for resource in page.Values do
@@ -566,7 +568,7 @@ let getResourcesUnderResourceGroup (resourceGroupName: string) = task {
                 azureResources = resources
                 pulumiImportJson = pulumiImportJson.ToString(Formatting.Indented)
             }
-
+        | Error error -> return Error $"Could not find resources in {resourceGroupName}: {error}"
     with
     | error ->
         let errorType = error.GetType().Name
