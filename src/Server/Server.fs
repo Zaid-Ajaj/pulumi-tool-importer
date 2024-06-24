@@ -58,17 +58,6 @@ let cloudWatchEventsClient() =
 
 let armClient() = ArmClient(AzureCliCredential())
 
-let getResourceGroups() = task {
-    try
-        let subscription = armClient().GetDefaultSubscription()
-        let groups = subscription.GetResourceGroups()
-        return Ok [ for group in groups -> group.Id.Name ]
-    with
-    | ex ->
-        let errorType = ex.GetType().Name
-        return Error $"{errorType}: {ex.Message}"
-}
-
 let getCallerIdentity() = task {
     try
         let client = securityTokenServiceClient()
@@ -510,15 +499,38 @@ let azureAccount() = task {
         return Error $"{errorType}: {error.Message}"
 }
 
+let getDefaultSubscription() = task {
+    match! azureAccount() with
+    | Ok account ->
+        let defaultSubscription =
+            armClient().GetSubscriptions()
+                |> Seq.tryFind (fun sub -> sub.Id.SubscriptionId = account.subscriptionId)
+                |> Option.defaultValue (armClient().GetDefaultSubscription())
+        return Ok defaultSubscription
+    | Error error ->
+        return Error $"Error occurred while getting the default subscription: {error}"
+}
 
+let getResourceGroups() = task {
+    try
+        let! subscription = getDefaultSubscription()
+        return match subscription with
+               | Ok subscriptionResource ->
+                    let groups = subscriptionResource.GetResourceGroups()
+                    Ok ([ for group in groups -> group.Id.Name ] |> List.sortBy (fun name -> name.ToLower()))
+               | Error error -> Error $"Could not find resource gropus: {error}"
+    with
+    | ex ->
+        let errorType = ex.GetType().Name
+        return Error $"{errorType}: {ex.Message}"
+}
 
 let getResourcesUnderResourceGroup (resourceGroupName: string) = task {
     try
-        let subscription = armClient().GetDefaultSubscription()
-        let resourceGroup = subscription.GetResourceGroup(resourceGroupName)
-        if not resourceGroup.HasValue then
-            return Error "Could not find the resource group"
-        else
+        let! subscription = getDefaultSubscription()
+        match subscription with
+        | Ok subscriptionResource ->
+            let resourceGroup = subscriptionResource.GetResourceGroup(resourceGroupName)
             let resources: AzureResource list = [
                 for page in resourceGroup.Value.GetGenericResources().AsPages() do
                 for resource in page.Values do
@@ -556,7 +568,7 @@ let getResourcesUnderResourceGroup (resourceGroupName: string) = task {
                 azureResources = resources
                 pulumiImportJson = pulumiImportJson.ToString(Formatting.Indented)
             }
-
+        | Error error -> return Error $"Could not find resources in {resourceGroupName}: {error}"
     with
     | error ->
         let errorType = error.GetType().Name
