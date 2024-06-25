@@ -1,6 +1,8 @@
-# Pulumi Importer (WIP)
+# Pulumi Importer
 
-A Pulumi tool for automatic resource discovery and resource import from cloud providers.
+A Pulumi tool plugin for automatic resource discovery and resource import from cloud providers. Currently supports AWS and Azure. 
+
+It lets search for your resources, automatically generate a Pulumi Import JSON file from them and preview a import operations see to see the generated import code withouth leaving the UI.
 
 ### Install via Pulumi (requires Pulumi CLI v3.121.0 or later)
 
