@@ -29,32 +29,33 @@ open Azure.Identity
 open Azure.ResourceManager
 open Microsoft.Extensions.Logging
 open Amazon.EC2
+open Humanizer
 
-let resourceExplorerClient() =
-    let credentials = EnvironmentVariablesAWSCredentials()
-    new AmazonResourceExplorer2Client(credentials)
+let awsEnvCredentials() =
+    let credentials =
+        Cli.Wrap("aws").WithArguments("configure export-credentials").ExecuteBufferedAsync().GetAwaiter().GetResult()
 
-let ec2Client() =
-    let credentials = EnvironmentVariablesAWSCredentials()
-    new AmazonEC2Client(credentials)
+    if credentials.ExitCode <> 0 then
+        failwith $"Error while getting AWS credentials using 'aws configure export-credentials`: {credentials.StandardError}"
+    else
+        let output = JObject.Parse credentials.StandardOutput
+        let accessKeyId = output["AccessKeyId"].ToObject<string>()
+        let secretAccessKey = output["SecretAccessKey"].ToObject<string>()
+        let sessionToken = output["SessionToken"].ToObject<string>()
+        SessionAWSCredentials(accessKeyId, secretAccessKey, sessionToken)
 
-let securityTokenServiceClient() =
-    let credentials = EnvironmentVariablesAWSCredentials()
-    new AmazonSecurityTokenServiceClient(credentials)
+let resourceExplorerClient() = new AmazonResourceExplorer2Client(awsEnvCredentials())
 
-let cloudFormationClient() =
-    let credentials = EnvironmentVariablesAWSCredentials()
-    new AmazonCloudFormationClient(credentials)
+let ec2Client() = new AmazonEC2Client(awsEnvCredentials())
+
+let securityTokenServiceClient() = new AmazonSecurityTokenServiceClient(awsEnvCredentials())
+
+let cloudFormationClient() = new AmazonCloudFormationClient(awsEnvCredentials())
 
 // https://aws.amazon.com/sqs AWS Message Queue Service
-let sqsClient() =
-    let credentials = EnvironmentVariablesAWSCredentials()
-    new AmazonSQSClient(credentials)
+let sqsClient() = new AmazonSQSClient(awsEnvCredentials())
 
-
-let cloudWatchEventsClient() =
-    let credentials = EnvironmentVariablesAWSCredentials()
-    new AmazonCloudWatchEventsClient(credentials)
+let cloudWatchEventsClient() = new AmazonCloudWatchEventsClient(awsEnvCredentials())
 
 let armClient() = ArmClient(AzureCliCredential())
 
@@ -264,7 +265,7 @@ let searchAws (request: AwsSearchRequest) = task {
             else
                 request.queryString
 
-        let! results = searchAws' (SearchRequest(QueryString=queryString, MaxResults=1000)) None
+        let! (results : ResizeArray<Resource>) = searchAws' (SearchRequest(QueryString=queryString, MaxResults=1000)) None
         let resourceTypesFromSearchResult =
             results
             |> Seq.map (fun resource -> resource.ResourceType)
@@ -431,10 +432,77 @@ let searchAws (request: AwsSearchRequest) = task {
         if ancestorTypes.Count > 0 then
             pulumiImportJson.Add("ancestorTypes", ancestorTypes)
 
-        return Ok {
+        let searchResponse : AwsSearchResponse = {
             resources = resources
             pulumiImportJson = pulumiImportJson.ToString(Formatting.Indented)
             warnings = warnings |> Seq.distinct |> Seq.sortBy id |> List.ofSeq
+        }
+
+        return Ok searchResponse
+    with
+    | error ->
+        let errorType = error.GetType().Name
+        return Error $"{errorType}: {error.Message}"
+}
+
+let getAwsCloudFormationStacks() = task {
+    try
+        let! response = cloudFormationClient().DescribeStacksAsync()
+        return Ok [
+            for stack in response.Stacks do
+                { stackId = stack.StackId
+                  stackName = stack.StackName
+                  status = stack.StackStatus.Value
+                  statusReason =  stack.StackStatusReason
+                  description = stack.Description
+                  tags = Map.ofList [ for tag in stack.Tags -> tag.Key, tag.Value ] }
+        ]
+    with
+    | error ->
+        let errorType = error.GetType().Name
+        return Error $"{errorType}: {error.Message}"
+}
+
+let parseCloudFormationType (resourceType: string) =
+    match resourceType.Split "::" with
+    | [| _; moduleName; resource |] -> moduleName, resource
+    | _ -> failwith $"Could not parse CloudFormation resource type: {resourceType}"
+
+let getAwsCloudFormationResources (stack: AwsCloudFormationStack) = task {
+    try
+        let client = cloudFormationClient()
+        let! stackTemplate = client.GetTemplateAsync(GetTemplateRequest(StackName=stack.stackId))
+        let! response = client.ListStackResourcesAsync(ListStackResourcesRequest(StackName=stack.stackId))
+        let cloudformationResources =  [
+            for resource in response.StackResourceSummaries do
+                { logicalId = resource.LogicalResourceId
+                  resourceId = resource.PhysicalResourceId
+                  resourceType = resource.ResourceType }
+        ]
+
+        let pulumiImportJson = JObject()
+        let resourcesJson = JArray()
+        let warnings = ResizeArray()
+
+        for resource in cloudformationResources do
+            let resourceJson = JObject()
+            match AwsCloudFormation.mapToPulumi resource.resourceType with
+            | Some pulumiType ->
+                resourceJson.Add("type", pulumiType)
+            | None ->
+                resourceJson.Add("type", resource.resourceType)
+                warnings.Add $"CloudFormation resource '{resource.resourceType}' did not have a corresponding Pulumi type"
+
+            resourceJson.Add("id", resource.resourceId)
+            resourceJson.Add("name", resource.logicalId.Replace("-", "_"))
+            resourcesJson.Add(resourceJson)
+
+        pulumiImportJson.Add("resources", resourcesJson)
+        return Ok {
+            resources = cloudformationResources
+            pulumiImportJson = pulumiImportJson.ToString(Formatting.Indented)
+            warnings = Seq.toList warnings
+            templateBody = stackTemplate.TemplateBody
         }
     with
     | error ->
@@ -662,6 +730,8 @@ let importerApi = {
     azureAccount = azureAccount >> Async.AwaitTask
     getResourcesUnderResourceGroup = getResourcesUnderResourceGroup >> Async.AwaitTask
     importPreview = importPreview >> Async.AwaitTask
+    getAwsCloudFormationStacks = getAwsCloudFormationStacks >> Async.AwaitTask
+    getAwsCloudFormationResources = getAwsCloudFormationResources >> Async.AwaitTask
 }
 
 let pulumiSchemaDocs = Remoting.documentation "Pulumi Importer" [ ]

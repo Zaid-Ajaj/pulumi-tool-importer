@@ -12,6 +12,9 @@ open System.Text
 open ICSharpCode.SharpZipLib.GZip
 open ICSharpCode.SharpZipLib.Tar
 open Octokit
+open Newtonsoft.Json
+open Newtonsoft.Json.Linq
+open PulumiSchema
 
 initializeContext()
 
@@ -32,6 +35,8 @@ let toolVersion() =
     doc.GetElementsByTagName("Version").[0].InnerText
 
 let artifacts = "./artifacts"
+
+let awsSchemaVersion = "6.42.0"
 
 let createTarGz (source: string) (target: string)  =
     let outStream = File.Create target
@@ -212,9 +217,16 @@ Target.create "Format" (fun _ ->
 
 Target.create "GenerateAwsSchemaTypes" (fun _ ->
     let outputPath = Path.Combine(serverPath, "AwsSchemaTypes.fs")
-    let awsSchemaVersion = "6.35.0"
     let content = Aws.generateLookupModule(awsSchemaVersion)
     File.WriteAllText(outputPath, content)
+)
+
+Target.create "GenerateAwsCloudFormation" (fun _ ->
+    Aws.generateCloudFormationTypes {
+        schemaVersion = awsSchemaVersion
+        awsNativeRepo = Path.getFullName "../pulumi-aws-native"
+        outputPath = Path.Combine(serverPath, "AwsCloudFormation.fs")
+    }
 )
 
 open Fake.Core.TargetOperators

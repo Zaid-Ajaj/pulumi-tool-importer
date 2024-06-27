@@ -40,6 +40,28 @@ type AwsSearchResponse = {
     warnings: string list
 }
 
+type AwsCloudFormationStack = {
+    stackId: string
+    stackName: string
+    status: string
+    statusReason: string
+    description: string
+    tags: Map<string, string>
+}
+
+type AwsCloudFormationResource = {
+    logicalId: string
+    resourceId: string
+    resourceType: string
+}
+
+type AwsCloudFormationResourcesResponse = {
+    resources: AwsCloudFormationResource list
+    pulumiImportJson: string
+    warnings: string list
+    templateBody: string
+}
+
 type AzureResource = {
     resourceId: string
     resourceType: string
@@ -73,6 +95,8 @@ type ImporterApi = {
     getPulumiVersion : unit -> Async<string>
     awsCallerIdentity : unit -> Async<Result<AwsCallerIdentity, string>>
     searchAws: AwsSearchRequest -> Async<Result<AwsSearchResponse, string>>
+    getAwsCloudFormationStacks: unit -> Async<Result<AwsCloudFormationStack list, string>>
+    getAwsCloudFormationResources: AwsCloudFormationStack -> Async<Result<AwsCloudFormationResourcesResponse, string>>
     azureAccount : unit -> Async<Result<AzureAccount, string>>
     getResourceGroups: unit -> Async<Result<string list, string>>
     getResourcesUnderResourceGroup: string -> Async<Result<AzureSearchResponse, string>>

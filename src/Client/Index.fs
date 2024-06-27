@@ -516,7 +516,7 @@ for AWS resource explorer
 
 
 [<ReactComponent>]
-let AwsImporter() =
+let AwsImporter(show: unit -> ReactElement) =
     let callerIdentity = React.useDeferred(serverApi.awsCallerIdentity(), [|  |])
     React.fragment [
         match callerIdentity with
@@ -540,23 +540,6 @@ let AwsImporter() =
                     prop.style [ style.color.red ]
                     prop.text errorMessage
                 ]
-
-                if errorMessage.Contains "The environment variables AWS_ACCESS_KEY_ID" then
-                    Html.p "If you have already logged in via the AWS CLI, you can export your credentials as environment variables using the following command:"
-                    Html.pre "eval \"$(aws configure export-credentials --format env)\""
-                    Html.p "Restart the importer after running the command."
-
-                if errorMessage.Contains "The security token included in the request is expired" then
-                    Html.p "Your credentials seem to be expired. Please refresh your credentials and restart the importer."
-                    Html.p "You can reset the credentials by running the following command:"
-                    Html.pre [
-                        Html.text "unset AWS_ACCESS_KEY_ID\n"
-                        Html.text "unset AWS_SECRET_ACCESS_KEY\n"
-                        Html.text "unset AWS_SESSION_TOKEN"
-                    ]
-                    Html.p "Then, login again using the AWS CLI and export the credentials as follows"
-                    Html.pre "eval \"$(aws configure export-credentials --format env)\""
-                    Html.p "Restart the importer after running the command."
             ]
 
         | Deferred.Resolved (Ok callerIdentity) ->
@@ -574,7 +557,7 @@ let AwsImporter() =
                 Html.br [ ]
                 Html.br [ ]
 
-                AwsResourceExplorer()
+                show()
             ]
     ]
 
@@ -584,24 +567,53 @@ let AwsStartPage() =
         MarkdownContent """
 ### Import from Amazon Web Services
 
-The importer tool uses AWS credentials from environment variables to authenticate with AWS.
+The importer tool requires you to authenticate with AWS using the [AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-quickstart.html).
 
-The easiest way to expose the credentials is to use the [AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-quickstart.html)
-to [login](https://docs.aws.amazon.com/signin/latest/userguide/command-line-sign-in.html).
-Afterwards you can use the following command to export the credentials as environment variables:
+Start by [logging in](https://docs.aws.amazon.com/signin/latest/userguide/command-line-sign-in.html) as follows:
+
 ```
-eval "$(aws configure export-credentials --format env)"
+aws sso login
 ```
 
-Then you can start the importer tool to import resources from your AWS account.
-
-If you are already logged in and have the credentials available, click 'Continue' to start importing resources.
+If you are already logged in, choose one of the following options to import resources:
 """
         Html.br [  ]
-        Html.button [
-            prop.className "button is-primary"
-            prop.text "Continue"
-            prop.onClick (fun _ -> Router.navigate("aws"))
+        Html.p [
+            prop.style [ style.fontSize 18 ]
+            prop.children [
+                Html.a [
+                    prop.href "/#aws"
+                    prop.style [ style.marginRight 5 ]
+                    prop.children [
+                        Html.i [
+                            prop.className "fa fa-chevron-right"
+                            prop.style [ style.marginRight 5  ]
+                        ]
+                        Html.text "AWS Resource Explorer"
+                    ]
+                ]
+
+                Html.span "Query your resources and import them using the AWS Resource Explorer."
+            ]
+        ]
+
+        Html.p [
+            prop.style [ style.fontSize 18 ]
+            prop.children [
+                Html.a [
+                    prop.href "/#aws-cloudformation-stacks"
+                    prop.style [ style.marginRight 5 ]
+                    prop.children [
+                        Html.i [
+                            prop.className "fa fa-chevron-right"
+                            prop.style [ style.marginRight 5  ]
+                        ]
+                        Html.text "Cloud Formation Stacks"
+                    ]
+                ]
+
+                Html.span "Lookup and import resources from your Cloud Formation stacks."
+            ]
         ]
     ]
 
@@ -817,6 +829,211 @@ let AzureImporter() =
             | Some resourceGroup -> AzureResourcesWithinResourceGroup resourceGroup
         ]
 
+[<ReactComponent>]
+let AwsCloudFormationResourcesByStack stack =
+    let tab, setTab = React.useState "resources"
+    let response = React.useDeferred(serverApi.getAwsCloudFormationResources stack, [| stack.stackId |])
+    match response with
+    | Deferred.HasNotStartedYet -> Html.none
+    | Deferred.InProgress ->
+        Html.progress [
+            prop.className "progress is-small is-primary"
+            prop.max 100
+        ]
+
+    | Deferred.Failed error ->
+        Html.p [
+            prop.style [ style.color.red ]
+            prop.text error.Message
+        ]
+
+    | Deferred.Resolved (Error errorMessage) ->
+        Html.p [
+            prop.style [ style.color.red ]
+            prop.text errorMessage
+        ]
+
+    | Deferred.Resolved (Ok response) ->
+        React.fragment [
+            // tabs
+            Html.div [
+                prop.className "tabs is-toggle"
+                prop.children [
+                    Html.ul [
+                        Html.li [
+                            prop.children [
+                                Html.a [ Html.span $"Resources ({List.length response.resources})" ]
+                            ]
+                            prop.onClick (fun _ -> setTab "resources")
+                            if tab = "resources" then
+                                prop.className "is-active"
+                        ]
+
+                        Html.li [
+                            prop.children [
+                                Html.a [ Html.span "Pulumi Import JSON" ]
+                            ]
+                            prop.onClick (fun _ -> setTab "import-json")
+                            if tab = "import-json" then
+                                prop.className "is-active"
+                        ]
+
+                        Html.li [
+                            prop.children [
+                                Html.a [ Html.span "Stack Template" ]
+                            ]
+                            prop.onClick (fun _ -> setTab "template")
+                            if tab = "template" then
+                                prop.className "is-active"
+                        ]
+
+                        if not (List.isEmpty response.warnings) then
+                            Html.li [
+                                prop.children [
+                                    Html.a [ Html.span $"Warnings ({List.length response.warnings})" ]
+                                ]
+                                prop.onClick (fun _ -> setTab "warnings")
+                                if tab = "warnings" then
+                                    prop.className "is-active"
+                            ]
+
+                        Html.li [
+                            prop.children [
+                                Html.a [ Html.span "Import Preview" ]
+                            ]
+                            prop.onClick (fun _ -> setTab "preview")
+                            if tab = "preview" then
+                                prop.className "is-active"
+                        ]
+                    ]
+                ]
+            ]
+
+            match tab with
+            | "preview" ->
+                ImportPreview(response.pulumiImportJson)
+
+            | "import-json" ->
+                ImportJsonDocs()
+                Html.pre [
+                    prop.style [ style.maxHeight 400; style.overflow.auto ]
+                    prop.children [
+                        Html.code response.pulumiImportJson
+                    ]
+                ]
+
+            | "template" ->
+                Html.pre response.templateBody
+
+            | "warnings" ->
+                response.warnings
+                |> String.concat "\n\n---\n\n"
+                |> MarkdownContent
+
+            | "resources" ->
+                Html.table [
+                    prop.className "table is-fullwidth"
+                    prop.style [
+                        style.maxHeight 400
+                        style.display.inlineBlock
+                        style.overflow.auto
+                    ]
+
+                    prop.children [
+                        Html.thead [
+                            Html.tr [
+                                Html.th "Logical ID"
+                                Html.th "Physical ID"
+                                Html.th "Type"
+                            ]
+                        ]
+
+                        Html.tbody [
+                            for resource in response.resources do
+                            Html.tr [
+                                Html.td [
+                                    prop.text resource.logicalId
+                                    prop.style [
+                                        style.maxWidth 400
+                                        style.overflow.hidden
+                                    ]
+                                ]
+
+                                Html.td [
+                                    prop.text resource.resourceId
+                                    prop.style [
+                                        style.maxWidth 500
+                                        style.overflow.hidden
+                                    ]
+                                ]
+
+                                Html.td resource.resourceType
+                            ]
+                        ]
+                    ]
+                ]
+
+            | _ ->
+                Html.none
+        ]
+
+[<ReactComponent>]
+let AwsCloudFormationStacks() =
+    let selectedStackId, setStackId = React.useState<string option>(None)
+    let stacks = React.useDeferred(serverApi.getAwsCloudFormationStacks(), [|  |])
+    match stacks with
+    | Deferred.HasNotStartedYet -> Html.none
+    | Deferred.InProgress ->
+        Html.progress [
+            prop.className "progress is-small is-primary"
+            prop.max 100
+        ]
+
+    | Deferred.Failed error ->
+        Html.p [
+            prop.style [ style.color.red ]
+            prop.text error.Message
+        ]
+
+    | Deferred.Resolved (Error errorMessage) ->
+        Html.p [
+            prop.style [ style.color.red ]
+            prop.text errorMessage
+        ]
+
+    | Deferred.Resolved (Ok stacks) ->
+        let stacksByCompletedFirst =
+            stacks
+            |> List.sortBy (fun stack ->
+                match stack.status with
+                | "CREATE_COMPLETE" -> 0
+                | _ -> 1)
+
+        React.fragment [
+            SelectSearch.selectSearch [
+                selectSearch.options [
+                    for stack in stacksByCompletedFirst -> {
+                        value = stack.stackId
+                        name = $"{stack.stackName} ({stack.status})"
+                        disabled = false
+                    }
+                ]
+
+                selectSearch.value (defaultArg selectedStackId "")
+                selectSearch.search true
+                selectSearch.placeholder "Select a stack to import resources from"
+                selectSearch.onChange (Some >> setStackId)
+            ]
+
+            Html.br [ ]
+
+            match selectedStackId with
+            | None -> Html.none
+            | Some stackId ->
+                match stacks |> List.tryFind (fun stack -> stack.stackId = stackId) with
+                | None -> Html.none
+                | Some stack -> AwsCloudFormationResourcesByStack stack
+        ]
 
 [<ReactComponent>]
 let AzureStartPage() =
@@ -970,7 +1187,9 @@ let View() =
                  router.children [
                     match currentUrl with
                     | [ "aws" ] ->
-                        AwsImporter()
+                        AwsImporter(fun _ -> AwsResourceExplorer())
+                    | [ "aws-cloudformation-stacks" ] ->
+                        AwsImporter(fun _ -> AwsCloudFormationStacks())
                     | [ "aws-start" ] ->
                         AwsStartPage()
                     | [ "azure-start" ] ->
