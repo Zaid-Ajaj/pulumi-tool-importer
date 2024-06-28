@@ -1,6 +1,7 @@
 module Server
 
 open System
+open System.Collections.Generic
 open System.Diagnostics
 open System.IO
 open Amazon.CloudFormation
@@ -31,9 +32,15 @@ open Microsoft.Extensions.Logging
 open Amazon.EC2
 open Humanizer
 
+let unsetDefaultRegion = "__default__"
+
 let awsEnvCredentials() =
     let credentials =
-        Cli.Wrap("aws").WithArguments("configure export-credentials").ExecuteBufferedAsync().GetAwaiter().GetResult()
+        Cli.Wrap("aws")
+           .WithArguments("configure export-credentials")
+           .WithValidation(CommandResultValidation.None)
+           .ExecuteBufferedAsync()
+           .GetAwaiter().GetResult()
 
     if credentials.ExitCode <> 0 then
         failwith $"Error while getting AWS credentials using 'aws configure export-credentials`: {credentials.StandardError}"
@@ -44,24 +51,48 @@ let awsEnvCredentials() =
         let sessionToken = output["SessionToken"].ToObject<string>()
         SessionAWSCredentials(accessKeyId, secretAccessKey, sessionToken)
 
-let resourceExplorerClient() = new AmazonResourceExplorer2Client(awsEnvCredentials())
+let resourceExplorerClient(region: string) =
+    if region = unsetDefaultRegion then
+        new AmazonResourceExplorer2Client(awsEnvCredentials())
+    else
+        new AmazonResourceExplorer2Client(awsEnvCredentials(), RegionEndpoint.GetBySystemName region)
 
-let ec2Client() = new AmazonEC2Client(awsEnvCredentials())
+let ec2Client(region: string) =
+    if region = unsetDefaultRegion then
+        new AmazonEC2Client(awsEnvCredentials())
+    else
+        new AmazonEC2Client(awsEnvCredentials(), RegionEndpoint.GetBySystemName region)
 
-let securityTokenServiceClient() = new AmazonSecurityTokenServiceClient(awsEnvCredentials())
+let securityTokenServiceClient(region: string) =
+    if region = unsetDefaultRegion then
+        new AmazonSecurityTokenServiceClient(awsEnvCredentials())
+    else
+        new AmazonSecurityTokenServiceClient(awsEnvCredentials(), RegionEndpoint.GetBySystemName region)
 
-let cloudFormationClient() = new AmazonCloudFormationClient(awsEnvCredentials())
+let cloudFormationClient(region: string) =
+    if region = unsetDefaultRegion then
+        new AmazonCloudFormationClient(awsEnvCredentials())
+    else
+        new AmazonCloudFormationClient(awsEnvCredentials(), RegionEndpoint.GetBySystemName region)
 
 // https://aws.amazon.com/sqs AWS Message Queue Service
-let sqsClient() = new AmazonSQSClient(awsEnvCredentials())
+let sqsClient(region: string) =
+    if region = unsetDefaultRegion then
+        new AmazonSQSClient(awsEnvCredentials())
+    else
+        new AmazonSQSClient(awsEnvCredentials(), RegionEndpoint.GetBySystemName region)
 
-let cloudWatchEventsClient() = new AmazonCloudWatchEventsClient(awsEnvCredentials())
+let cloudWatchEventsClient(region: string) =
+    if region = unsetDefaultRegion then
+        new AmazonCloudWatchEventsClient(awsEnvCredentials())
+    else
+        new AmazonCloudWatchEventsClient(awsEnvCredentials(), RegionEndpoint.GetBySystemName region)
 
 let armClient() = ArmClient(AzureCliCredential())
 
 let getCallerIdentity() = task {
     try
-        let client = securityTokenServiceClient()
+        let client = securityTokenServiceClient(unsetDefaultRegion)
         let! response = client.GetCallerIdentityAsync(GetCallerIdentityRequest())
 
         if response.HttpStatusCode <> System.Net.HttpStatusCode.OK then
@@ -78,14 +109,14 @@ let getCallerIdentity() = task {
         return Error $"{errorType}: {error.Message}"
 }
 
-let rec searchAws' (request: SearchRequest) (nextToken: string option) = task {
+let rec searchAws' (request: SearchRequest) (region:string) (nextToken: string option) = task {
    let resources = ResizeArray()
-   let explorer = resourceExplorerClient()
+   let explorer = resourceExplorerClient region
    nextToken |> Option.iter (fun token -> request.NextToken <- token)
    let! response = explorer.SearchAsync(request)
    resources.AddRange response.Resources
    if not (isNull response.NextToken) then
-       let! next = searchAws' request (Some response.NextToken)
+       let! next = searchAws' request region (Some response.NextToken)
        resources.AddRange next
    return resources
 }
@@ -265,7 +296,7 @@ let searchAws (request: AwsSearchRequest) = task {
             else
                 request.queryString
 
-        let! (results : ResizeArray<Resource>) = searchAws' (SearchRequest(QueryString=queryString, MaxResults=1000)) None
+        let! results = searchAws' (SearchRequest(QueryString=queryString, MaxResults=1000)) request.region None
         let resourceTypesFromSearchResult =
             results
             |> Seq.map (fun resource -> resource.ResourceType)
@@ -278,7 +309,7 @@ let searchAws (request: AwsSearchRequest) = task {
 
         let! securityGroupRules = task {
             if shouldQuerySecurityGroupRules then
-                let client = ec2Client()
+                let client = ec2Client request.region
                 let request = DescribeSecurityGroupRulesRequest()
                 let! response = client.DescribeSecurityGroupRulesAsync(request)
                 return Map.ofList [ for rule in response.SecurityGroupRules -> rule.SecurityGroupRuleId, rule ]
@@ -293,7 +324,7 @@ let searchAws (request: AwsSearchRequest) = task {
 
         let! sqsQueueUrls = task {
             if resourceTypesFromSearchResult.Contains "sqs:queue" then
-                let client = sqsClient()
+                let client = sqsClient request.region
                 let! response = client.ListQueuesAsync(queueNamePrefix="")
                 return response.QueueUrls
             else
@@ -306,7 +337,7 @@ let searchAws (request: AwsSearchRequest) = task {
 
         let! cloudwatchEventRules = task {
             if resourceTypesFromSearchResult.Contains "events:rule" then
-                let client = cloudWatchEventsClient()
+                let client = cloudWatchEventsClient request.region
                 let! response = client.ListRulesAsync()
                 return Map.ofList [ for rule in response.Rules -> rule.Arn, rule ]
             else
@@ -362,7 +393,6 @@ let searchAws (request: AwsSearchRequest) = task {
 
         let pulumiImportJson = JObject()
         let resourcesJson = JArray()
-        let ancestorTypes = JObject()
         let addedResourceIds = ResizeArray()
         let warnings = ResizeArray()
         for resource in resources do
@@ -379,13 +409,6 @@ let searchAws (request: AwsSearchRequest) = task {
                             else "aws:vpc/securityGroupIngressRule:SecurityGroupIngressRule"
                         | _ ->
                             $"aws:{serviceName}/{normalizeModuleName resourceType}:{normalizeTypeName resourceType}"
-
-                    if not (ancestorTypes.ContainsKey pulumiType') then
-                        match Map.tryFind pulumiType' AwsSchemaTypes.ancestorsByType with
-                        | Some ancestors ->
-                            ancestorTypes.Add(pulumiType', JArray ancestors)
-                        | None ->
-                            ()
 
                     pulumiType'
                 | _ ->
@@ -429,9 +452,6 @@ let searchAws (request: AwsSearchRequest) = task {
                 resourcesJson.Add(resourceJson)
 
         pulumiImportJson.Add("resources", resourcesJson)
-        if ancestorTypes.Count > 0 then
-            pulumiImportJson.Add("ancestorTypes", ancestorTypes)
-
         let searchResponse : AwsSearchResponse = {
             resources = resources
             pulumiImportJson = pulumiImportJson.ToString(Formatting.Indented)
@@ -445,9 +465,10 @@ let searchAws (request: AwsSearchRequest) = task {
         return Error $"{errorType}: {error.Message}"
 }
 
-let getAwsCloudFormationStacks() = task {
+let getAwsCloudFormationStacks(region: string) = task {
     try
-        let! response = cloudFormationClient().DescribeStacksAsync()
+        let client = cloudFormationClient region
+        let! response = client.DescribeStacksAsync()
         let stacks =
             response.Stacks
             |> Seq.sortByDescending (fun stack -> stack.CreationTime)
@@ -456,6 +477,7 @@ let getAwsCloudFormationStacks() = task {
             for stack in stacks do
                 { stackId = stack.StackId
                   stackName = stack.StackName
+                  region = region
                   status = stack.StackStatus.Value
                   statusReason =  stack.StackStatusReason
                   description = stack.Description
@@ -467,19 +489,130 @@ let getAwsCloudFormationStacks() = task {
         return Error $"{errorType}: {error.Message}"
 }
 
-let parseCloudFormationType (resourceType: string) =
-    match resourceType.Split "::" with
-    | [| _; moduleName; resource |] -> moduleName, resource
-    | _ -> failwith $"Could not parse CloudFormation resource type: {resourceType}"
+let getAwsCloudFormationGeneratedTemplates(region: string) = task {
+    try
+        let client = cloudFormationClient region
+        let request = ListGeneratedTemplatesRequest()
+        let! response = client.ListGeneratedTemplatesAsync(request)
+        let templates =
+            response.Summaries
+            |> List.ofSeq
+            |> List.sortByDescending (fun template -> template.CreationTime)
+            |> List.map (fun template -> {
+                templateId = template.GeneratedTemplateId
+                templateName = template.GeneratedTemplateName
+                resourceCount = template.NumberOfResources
+            })
+
+        return Ok templates
+
+    with
+    | error ->
+        let errorType = error.GetType().Name
+        return Error $"{errorType}: {error.Message}"
+}
 
 let cloudFormationResourceToSkip = set [
     "AWS::CloudFormation::CustomResource"
     "AWS::CDK::Metadata"
 ]
 
+let getJObject (key: string) (json: JObject) =
+    if json.ContainsKey key && json[key].Type = JTokenType.Object then
+        json[key] :?> JObject
+    else
+        JObject()
+
+let getAwsCloudFormationGeneratedTemplate (request: AwsGeneratedTemplateRequest) = task {
+    try
+        let client = cloudFormationClient request.region
+        let! templateResponse = client.GetGeneratedTemplateAsync(GetGeneratedTemplateRequest(GeneratedTemplateName=request.templateName))
+        let! templateDetails = client.DescribeGeneratedTemplateAsync(DescribeGeneratedTemplateRequest(GeneratedTemplateName=request.templateName))
+        let templateBody = JObject.Parse templateResponse.TemplateBody
+
+        let pulumiImportJson = JObject()
+        let resourcesJson = JArray()
+        let errors = ResizeArray()
+        let resourcesFromTemplate = getJObject "Resources" templateBody
+        let resourceDataByLogicalID = Dictionary<string, Dictionary<string, string>>()
+        for resource in templateDetails.Resources do
+            let resourceData = Dictionary<string, string>()
+            // add resource identifiers from template resources
+            for pair in resource.ResourceIdentifier do
+                resourceData.Add(pair.Key, pair.Value)
+
+            // add inputs from template resources
+            let resourceJson = getJObject resource.LogicalResourceId resourcesFromTemplate
+            let resourceProperties = getJObject "Properties" resourceJson
+            for property in resourceProperties.Properties() do
+                if property.Value.Type = JTokenType.String && not (resourceData.ContainsKey property.Name)
+                    then resourceData.Add(property.Name, property.Value.ToObject<string>())
+
+            resourceDataByLogicalID.Add(resource.LogicalResourceId, resourceData)
+
+        for resource in templateDetails.Resources do
+            if not (cloudFormationResourceToSkip.Contains resource.ResourceType) then
+                let resourceJson = JObject()
+                match AwsCloudFormationGeneratedTemplates.remapSpecifications.TryFind resource.ResourceType with
+                | None ->
+                    match AwsCloudFormation.mapToPulumi resource.ResourceType with
+                    | Some pulumiType ->
+                        resourceJson.Add("type", pulumiType)
+                        if resource.ResourceIdentifier.Count > 0 then
+                            let value = Seq.head resource.ResourceIdentifier.Values
+                            resourceJson.Add("id", value)
+                        else
+                            resourceJson.Add("id", "")
+                            errors.Add $"CloudFormation resource '{resource.ResourceType}' does not have an identifier"
+                    | None ->
+                        resourceJson.Add("type", resource.ResourceType)
+                        errors.Add $"CloudFormation resource '{resource.ResourceType}' did not have a corresponding Pulumi type"
+                        if resource.ResourceIdentifier.Count > 0 then
+                            let value = Seq.head resource.ResourceIdentifier.Values
+                            resourceJson.Add("id", value)
+                        else
+                            resourceJson.Add("id", "")
+                            errors.Add $"CloudFormation resource '{resource.ResourceType}' does not have an identifier"
+
+                | Some pulumiMapping ->
+                    resourceJson.Add("type", pulumiMapping.pulumiType)
+                    let importPartValues =
+                        pulumiMapping.importIdentityParts
+                        |> Seq.choose (fun part ->
+                            match resourceDataByLogicalID[resource.LogicalResourceId].TryGetValue(part) with
+                            | true, value -> Some value
+                            | _ -> None)
+                        |> String.concat pulumiMapping.delimiter
+
+                    resourceJson.Add("id", importPartValues)
+
+                resourceJson.Add("name", resource.LogicalResourceId.Replace("-", "_"))
+                resourcesJson.Add(resourceJson)
+
+        pulumiImportJson.Add("resources", resourcesJson)
+
+        return Ok {
+            templateBody = templateBody.ToString(Formatting.Indented)
+            resourceDataJson = (JObject.FromObject resourceDataByLogicalID).ToString(Formatting.Indented)
+            pulumiImportJson = pulumiImportJson.ToString(Formatting.Indented)
+            errors = List.ofSeq errors
+        }
+    with
+    | error ->
+        let errorType = error.GetType().Name
+        return Error $"{errorType}: {error.Message}"
+}
+
+let parseCloudFormationType (resourceType: string) =
+    match resourceType.Split "::" with
+    | [| _; moduleName; resource |] -> moduleName, resource
+    | _ -> failwith $"Could not parse CloudFormation resource type: {resourceType}"
+
+
+
 let getAwsCloudFormationResources (stack: AwsCloudFormationStack) = task {
     try
-        let client = cloudFormationClient()
+        let client = cloudFormationClient stack.region
         let! stackTemplate = client.GetTemplateAsync(GetTemplateRequest(StackName=stack.stackId))
         let! response = client.ListStackResourcesAsync(ListStackResourcesRequest(StackName=stack.stackId))
 
@@ -629,7 +762,6 @@ let getResourcesUnderResourceGroup (resourceGroupName: string) = task {
             resourceGroupJson.Add("id", resourceGroup.Value.Id.ToString())
             resourcesJson.Add(resourceGroupJson)
 
-            let ancestorTypes = JObject()
             for resource in resources do
                 let azureNativeType = AzureResourceTokens.fromAzureSpecToPulumi resource.resourceType
                 let resourceJson = JObject()
@@ -638,11 +770,7 @@ let getResourcesUnderResourceGroup (resourceGroupName: string) = task {
                 resourceJson.Add("id", resource.resourceId)
                 resourcesJson.Add(resourceJson)
 
-                if not (ancestorTypes.ContainsKey azureNativeType) then
-                    ancestorTypes.Add(azureNativeType, JArray [| "azure-native:resources:ResourceGroup" |])
-
             pulumiImportJson.Add("resources", resourcesJson)
-            pulumiImportJson.Add("ancestorTypes", ancestorTypes)
 
             return Ok {
                 azureResources = resources
@@ -708,8 +836,15 @@ let importPreview (request: ImportPreviewRequest) = task {
                    .WithWorkingDirectory(tempDir)
                    .WithArguments(args)
                    .WithEnvironmentVariables(fun config ->
-                       config.Set("PULUMI_CONFIG_PASSPHRASE", "whatever").Build()
-                       |> ignore)
+                       if request.region <> "" then
+                            config
+                                .Set("PULUMI_CONFIG_PASSPHRASE", "whatever")
+                                .Set("AWS_REGION", request.region)
+                                .Build()
+                            |> ignore
+                       else
+                           config.Set("PULUMI_CONFIG_PASSPHRASE", "whatever").Build()
+                           |> ignore)
                    .WithValidation(CommandResultValidation.None)
                    .ExecuteBufferedAsync()
                    .GetAwaiter()
@@ -779,6 +914,8 @@ let importerApi = {
     importPreview = importPreview >> Async.AwaitTask
     getAwsCloudFormationStacks = getAwsCloudFormationStacks >> Async.AwaitTask
     getAwsCloudFormationResources = getAwsCloudFormationResources >> Async.AwaitTask
+    getAwsCloudFormationGeneratedTemplates = getAwsCloudFormationGeneratedTemplates >> Async.AwaitTask
+    getAwsCloudFormationGeneratedTemplate = getAwsCloudFormationGeneratedTemplate >> Async.AwaitTask
 }
 
 let pulumiSchemaDocs = Remoting.documentation "Pulumi Importer" [ ]

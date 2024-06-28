@@ -107,7 +107,14 @@ let PulumiTitleWithVersion() =
          Html.div "Pulumi Importer"
 
 [<ReactComponent>]
-let ImportPreview(importJson: string) =
+let AwsRegionImportDocs(region:string) = MarkdownContent $"""
+Note: we run import previews with environment variable AWS_REGION={region}
+Remember to setup your Pulumi stack with the correct AWS region using `pulumi config set aws:region {region}`
+when you actually run the import command.
+"""
+
+[<ReactComponent>]
+let ImportPreview(importJson: string, region: string) =
     let importJsonInputRef = React.useInputRef()
     let tab, setTab = React.useState "code"
     let language, setLanguage = React.useState "typescript"
@@ -158,12 +165,16 @@ let ImportPreview(importJson: string) =
                             importPreview {
                                 language = language
                                 pulumiImportJson = importJsonInput.value
+                                region = region
                             }))
                 ]
             ]
         ]
 
         Html.br [ ]
+
+        if region <> "__default__" && region <> ""
+            then AwsRegionImportDocs region
 
         Html.details [
             prop.style [
@@ -244,16 +255,22 @@ let ImportPreview(importJson: string) =
     ]
 
 [<ReactComponent>]
-let ImportJsonDocs() = MarkdownContent """
+let ImportJsonDocs(region: string) =
+    let command =
+        if region <> "__default__" && region <> ""
+        then $"\nRemember to setup your Pulumi stack with the AWS region using `pulumi config set aws:region {region}` before running the import\n"
+        else ""
+
+    MarkdownContent $"""
 The following JSON content can be used by pulumi to batch import the resources into a pulumi project.
 
 Put the contents inside a file called `import.json` and run `pulumi import -f import.json`
-
+{command}
 See [pulumi import](https://www.pulumi.com/docs/cli/commands/pulumi_import/) to learn more about importing resources.
 """
 
 [<ReactComponent>]
-let AwsResourceExplorer() =
+let AwsResourceExplorer(region: string) =
     let searchInputRef = React.useInputRef()
     let tagsInputRef = React.useInputRef()
     let currentTab, setCurrentTab = React.useState "resources"
@@ -285,6 +302,7 @@ for AWS resource explorer
                                         search {
                                             queryString = searchInput.value
                                             tags = tagsInput.value
+                                            region = region
                                         })
                                 )
                             )
@@ -306,6 +324,7 @@ for AWS resource explorer
                                         search {
                                             queryString = searchInput.value
                                             tags = tagsInput.value
+                                            region = region
                                         })
                                 )
                             )
@@ -336,6 +355,7 @@ for AWS resource explorer
                                         search {
                                             queryString = searchInput.value
                                             tags = tagsInput.value
+                                            region = region
                                         })
                                 )
                             )
@@ -413,7 +433,7 @@ for AWS resource explorer
 
             match currentTab with
             | "import-json" ->
-                ImportJsonDocs()
+                ImportJsonDocs region
                 Html.pre [
                     prop.style [ style.maxHeight 400; style.overflow.auto ]
                     prop.children [
@@ -509,15 +529,16 @@ for AWS resource explorer
                     ]
                 ]
             | "preview" ->
-                ImportPreview(response.pulumiImportJson)
+                ImportPreview(response.pulumiImportJson, region)
             | _ ->
                 Html.none
     ]
 
 
 [<ReactComponent>]
-let AwsImporter(show: unit -> ReactElement) =
-    let callerIdentity = React.useDeferred(serverApi.awsCallerIdentity(), [|  |])
+let AwsImporter(awsPage: string -> ReactElement) =
+    let region, setRegion = React.useState "__default__"
+    let callerIdentity = React.useDeferred(serverApi.awsCallerIdentity(), [| region |])
     React.fragment [
         match callerIdentity with
         | Deferred.HasNotStartedYet -> Html.none
@@ -550,14 +571,47 @@ let AwsImporter(show: unit -> ReactElement) =
                 ]
 
                 Html.span [
-                    prop.style [ style.fontSize 18 ]
+                    prop.style [ style.fontSize 18; style.marginRight 10 ]
                     prop.text $"Logged in as {callerIdentity.userId}"
+                ]
+
+                Html.div [
+                    prop.style [ style.width 350; style.position.relative; style.display.inlineBlock ]
+                    prop.children [
+                        SelectSearch.selectSearch [
+                            selectSearch.options [
+                                { value = "__default__"; name = "Select a region"; disabled = false }
+                                { value = "us-east-2"; name = "US East Ohio / us-east-2"; disabled = false }
+                                { value = "us-east-1"; name = "US East (N. Virginia) / us-east-1"; disabled = false }
+                                { value = "us-west-1"; name = "US West (N. California) / us-west-1"; disabled = false }
+                                { value = "us-west-2"; name = "US West (Oregon) / us-west-2"; disabled = false }
+                                { value = "af-south-1"; name = "Africa (Cape Town) / af-south-1"; disabled = false }
+                                { value = "ap-east-1"; name = "Asia Pacific (Hong Kong) / ap-east-1"; disabled = false }
+                                { value = "ap-south-1"; name = "Asia Pacific (Mumbai) / ap-south-1"; disabled = false }
+                                { value = "ap-northeast-2"; name = "Asia Pacific (Seoul) / ap-northeast-2"; disabled = false }
+                                { value = "ap-southeast-1"; name = "Asia Pacific (Singapore) / ap-southeast-1"; disabled = false }
+                                { value = "ap-southeast-2"; name = "Asia Pacific (Sydney) / ap-southeast-2"; disabled = false }
+                                { value = "ap-northeast-1"; name = "Asia Pacific (Tokyo) / ap-northeast-1"; disabled = false }
+                                { value = "ca-central-1"; name = "Canada (Central) / ca-central-1"; disabled = false }
+                                { value = "eu-central-1"; name = "Europe (Frankfurt) / eu-central-1"; disabled = false }
+                                { value = "eu-west-1"; name = "Europe (Ireland) / eu-west-1"; disabled = false }
+                                { value = "eu-west-2"; name = "Europe (London) / eu-west-2"; disabled = false }
+                                { value = "eu-south-1"; name = "Europe (Milan) / eu-south-1"; disabled = false }
+                                { value = "eu-west-3"; name = "Europe (Paris) / eu-west-3"; disabled = false }
+                            ]
+
+                            selectSearch.value region
+                            selectSearch.search true
+                            selectSearch.placeholder "Select a region"
+                            selectSearch.onChange setRegion
+                        ]
+                    ]
                 ]
 
                 Html.br [ ]
                 Html.br [ ]
 
-                show()
+                awsPage region
             ]
     ]
 
@@ -613,6 +667,25 @@ If you are already logged in, choose one of the following options to import reso
                 ]
 
                 Html.span "Lookup and import resources from your Cloud Formation stacks."
+            ]
+        ]
+
+        Html.p [
+            prop.style [ style.fontSize 18 ]
+            prop.children [
+                Html.a [
+                    prop.href "/#aws-cloudformation-generated-templates"
+                    prop.style [ style.marginRight 5 ]
+                    prop.children [
+                        Html.i [
+                            prop.className "fa fa-chevron-right"
+                            prop.style [ style.marginRight 5  ]
+                        ]
+                        Html.text "Cloud Formation Generated Templates"
+                    ]
+                ]
+
+                Html.span "Convert your Cloud Formation generated templates into Pulumi import definitions."
             ]
         ]
     ]
@@ -681,7 +754,7 @@ let AzureResourcesWithinResourceGroup(resourceGroup: string) =
             // content
             match currentTab with
             | "import-json" ->
-                ImportJsonDocs()
+                ImportJsonDocs ""
                 Html.pre [
                     prop.style [ style.maxHeight 400; style.overflow.auto ]
                     prop.children [
@@ -736,7 +809,7 @@ let AzureResourcesWithinResourceGroup(resourceGroup: string) =
                 ]
 
             | "preview" ->
-                ImportPreview(response.pulumiImportJson)
+                ImportPreview(response.pulumiImportJson, "")
             | _ ->
                 Html.none
         ]
@@ -950,10 +1023,10 @@ let AwsCloudFormationResourcesByStack stack =
                 if not (List.isEmpty response.errors) then
                     CloudFormationErrorMessageOnPreview()
 
-                ImportPreview(response.pulumiImportJson)
+                ImportPreview(response.pulumiImportJson, stack.region)
 
             | "import-json" ->
-                ImportJsonDocs()
+                ImportJsonDocs stack.region
                 Html.pre [
                     prop.style [ style.maxHeight 400; style.overflow.auto ]
                     prop.children [
@@ -1022,9 +1095,9 @@ let AwsCloudFormationResourcesByStack stack =
         ]
 
 [<ReactComponent>]
-let AwsCloudFormationStacks() =
+let AwsCloudFormationStacks(region: string) =
     let selectedStackId, setStackId = React.useState<string option>(None)
-    let stacks = React.useDeferred(serverApi.getAwsCloudFormationStacks(), [|  |])
+    let stacks = React.useDeferred(serverApi.getAwsCloudFormationStacks region, [| region |])
     match stacks with
     | Deferred.HasNotStartedYet -> Html.none
     | Deferred.InProgress ->
@@ -1077,6 +1150,160 @@ let AwsCloudFormationStacks() =
                 match stacks |> List.tryFind (fun stack -> stack.stackId = stackId) with
                 | None -> Html.none
                 | Some stack -> AwsCloudFormationResourcesByStack stack
+        ]
+
+[<ReactComponent>]
+let AwsCloudFormationGeneratedTemplate(templateName: string, region: string) =
+    let loadTemplate() = async {
+        return! serverApi.getAwsCloudFormationGeneratedTemplate {
+            templateName = templateName
+            region = region
+        }
+    }
+
+    let currentTab, setCurrentTab = React.useState "template"
+    let template = React.useDeferred(loadTemplate(), [| region; templateName |])
+    match template with
+    | Deferred.HasNotStartedYet -> Html.none
+    | Deferred.InProgress ->
+        Html.progress [
+            prop.className "progress is-small is-primary"
+            prop.max 100
+        ]
+
+    | Deferred.Failed error ->
+        Html.p [
+            prop.style [ style.color.red ]
+            prop.text error.Message
+        ]
+
+    | Deferred.Resolved (Error errorMessage) ->
+        Html.p [
+            prop.style [ style.color.red ]
+            prop.text errorMessage
+        ]
+
+    | Deferred.Resolved (Ok response) ->
+         React.fragment [
+            // tabs
+            Html.div [
+                prop.className "tabs is-toggle"
+                prop.children [
+                    Html.ul [
+                        Html.li [
+                            prop.children [
+                                Html.a [ Html.span "Template" ]
+                            ]
+                            prop.onClick (fun _ -> setCurrentTab "template")
+                            if currentTab = "template" then
+                                prop.className "is-active"
+                        ]
+
+                        Html.li [
+                            prop.children [
+                                Html.a [ Html.span "Resource Data" ]
+                            ]
+                            prop.onClick (fun _ -> setCurrentTab "data")
+                            if currentTab = "data" then
+                                prop.className "is-active"
+                        ]
+
+                        Html.li [
+                            prop.children [
+                                Html.a [ Html.span "Pulumi Import JSON" ]
+                            ]
+                            prop.onClick (fun _ -> setCurrentTab "import-json")
+                            if currentTab = "import-json" then
+                                prop.className "is-active"
+                        ]
+
+                        Html.li [
+                            prop.children [
+                                Html.a [ Html.span "Preview" ]
+                            ]
+                            prop.onClick (fun _ -> setCurrentTab "preview")
+                            if currentTab = "preview" then
+                                prop.className "is-active"
+                        ]
+                    ]
+                ]
+            ]
+
+            // content
+            match currentTab with
+            | "template" ->
+                Html.pre response.templateBody
+
+            | "data" ->
+                Html.pre response.resourceDataJson
+
+            | "import-json" ->
+                ImportJsonDocs region
+                Html.pre [
+                    prop.style [ style.maxHeight 400; style.overflow.auto ]
+                    prop.children [
+                        Html.code response.pulumiImportJson
+                    ]
+                ]
+
+            | "preview" ->
+                ImportPreview(response.pulumiImportJson, region)
+
+            | _ ->
+                Html.none
+        ]
+
+
+
+[<ReactComponent>]
+let AwsCloudFormationGeneratedTemplates(region: string) =
+    let selectedTemplateName, setTemplateName = React.useState<string option>(None)
+    let templates = React.useDeferred(serverApi.getAwsCloudFormationGeneratedTemplates region, [| region |])
+    match templates with
+    | Deferred.HasNotStartedYet -> Html.none
+    | Deferred.InProgress ->
+        Html.progress [
+            prop.className "progress is-small is-primary"
+            prop.max 100
+        ]
+
+    | Deferred.Failed error ->
+        Html.p [
+            prop.style [ style.color.red ]
+            prop.text error.Message
+        ]
+
+    | Deferred.Resolved (Error errorMessage) ->
+        Html.p [
+            prop.style [ style.color.red ]
+            prop.text errorMessage
+        ]
+
+    | Deferred.Resolved (Ok templates) ->
+        React.fragment [
+            SelectSearch.selectSearch [
+                selectSearch.options [
+                    for template in templates -> {
+                        value = template.templateName
+                        name = $"{template.templateName} ({template.resourceCount} resources)"
+                        disabled = false
+                    }
+                ]
+
+                selectSearch.value (defaultArg selectedTemplateName "")
+                selectSearch.search true
+                selectSearch.placeholder "Select a generated template to import resources from"
+                selectSearch.onChange (Some >> setTemplateName)
+            ]
+
+            Html.br [ ]
+
+            if List.isEmpty templates then
+                Html.p "No generated templates found, did you create the templates in a different region?"
+
+            match selectedTemplateName with
+            | None -> Html.none
+            | Some templateName -> AwsCloudFormationGeneratedTemplate(templateName, region)
         ]
 
 [<ReactComponent>]
@@ -1231,9 +1458,11 @@ let View() =
                  router.children [
                     match currentUrl with
                     | [ "aws" ] ->
-                        AwsImporter(fun _ -> AwsResourceExplorer())
+                        AwsImporter(fun region -> AwsResourceExplorer region)
                     | [ "aws-cloudformation-stacks" ] ->
-                        AwsImporter(fun _ -> AwsCloudFormationStacks())
+                        AwsImporter(fun region -> AwsCloudFormationStacks region)
+                    | [ "aws-cloudformation-generated-templates" ] ->
+                        AwsImporter(fun region -> AwsCloudFormationGeneratedTemplates region)
                     | [ "aws-start" ] ->
                         AwsStartPage()
                     | [ "azure-start" ] ->
@@ -1246,7 +1475,7 @@ let View() =
 Use the import preview to experiment with [Pulumi Import](https://www.pulumi.com/docs/cli/commands/pulumi_import/).
 Edit the JSON content and preview the import results in different languages alongside the imported stack state.
                         """
-                        ImportPreview("{ \"resources\": [] }")
+                        ImportPreview("{ \"resources\": [] }", "")
                     | _ ->
                         Html.p [
                             prop.text "Select a cloud provider to import resources from:"

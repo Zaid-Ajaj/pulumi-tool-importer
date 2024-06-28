@@ -22,6 +22,7 @@ type AwsCallerIdentity = {
 type AwsSearchRequest = {
     queryString: string
     tags: string
+    region: string
 }
 
 type AwsResource = {
@@ -47,6 +48,13 @@ type AwsCloudFormationStack = {
     statusReason: string
     description: string
     tags: Map<string, string>
+    region: string
+}
+
+type AwsCloudFormationGeneratedTemplate = {
+    templateId: string
+    templateName: string
+    resourceCount: int
 }
 
 type AwsCloudFormationResource = {
@@ -83,6 +91,7 @@ type AzureAccount = {
 type ImportPreviewRequest = {
     pulumiImportJson: string
     language: string
+    region: string
 }
 
 type ImportPreviewResponse = {
@@ -91,13 +100,26 @@ type ImportPreviewResponse = {
     warnings: string list
     standardError: string option
 }
+type AwsGeneratedTemplateRequest = {
+    templateName: string
+    region: string
+}
+
+type AwsGeneratedTemplateResponse = {
+    templateBody: string
+    resourceDataJson: string
+    pulumiImportJson: string
+    errors: string list
+}
 
 type ImporterApi = {
     getPulumiVersion : unit -> Async<string>
     awsCallerIdentity : unit -> Async<Result<AwsCallerIdentity, string>>
     searchAws: AwsSearchRequest -> Async<Result<AwsSearchResponse, string>>
-    getAwsCloudFormationStacks: unit -> Async<Result<AwsCloudFormationStack list, string>>
+    getAwsCloudFormationStacks: string -> Async<Result<AwsCloudFormationStack list, string>>
     getAwsCloudFormationResources: AwsCloudFormationStack -> Async<Result<AwsCloudFormationResourcesResponse, string>>
+    getAwsCloudFormationGeneratedTemplates: string -> Async<Result<AwsCloudFormationGeneratedTemplate list, string>>
+    getAwsCloudFormationGeneratedTemplate: AwsGeneratedTemplateRequest -> Async<Result<AwsGeneratedTemplateResponse, string>>
     azureAccount : unit -> Async<Result<AzureAccount, string>>
     getResourceGroups: unit -> Async<Result<string list, string>>
     getResourcesUnderResourceGroup: string -> Async<Result<AzureSearchResponse, string>>

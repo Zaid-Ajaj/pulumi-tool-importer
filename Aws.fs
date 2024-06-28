@@ -251,7 +251,20 @@ let cloudformationMappings = function
 | "EC2", "IPAMResourceDiscovery" -> "EC2", "VpcIpamResourceDiscovery"
 | "EC2", "IPAMResourceDiscoveryAssociation" -> "EC2", "VpcIpamResourceDiscoveryAssociation"
 | "EC2", "IPAMScope" -> "EC2", "VpcIpamScope"
+| "EC2", "VPC" -> "EC2", "Vpc"
+| "EC2", "Volume" -> "Ebs", "Volume"
+| "EC2", "VPCCidrBlock" -> "EC2", "VpcCidrBlock"
+| "EC2", "VPCDHCPOptionsAssociation" -> "EC2", "VpcdhcpOptionsAssociation"
+| "EC2", "VPCEndpoint" -> "EC2", "VpcEndpoint"
+| "EC2", "SecurityGroupEgress" -> "EC2", "SecurityGroupEgressRule"
+| "EC2", "SecurityGroupIngress" -> "EC2", "SecurityGroupIngressRule"
+| "IAM", "OIDCProvider" -> "Iam", "OpenIdConnectProvider"
 | moduleName, resourceType -> moduleName, resourceType
+
+let (|ModuleName|_|) (input: string) =
+    match input.Split "/" with
+    | [| moduleName; _ |] -> Some (moduleName)
+    | _ -> None
 
 let generateCloudFormationTypes(config: CloudFormationConfig) =
     let types = ResizeArray()
@@ -281,18 +294,25 @@ let generateCloudFormationTypes(config: CloudFormationConfig) =
             append "/// Maps CloudFormation resource types to Pulumi resource types"
             append "let mapToPulumi = function"
             for cloudformationType in Seq.sort types do
+                let mutable correspondingTypeFound = false
                 match cloudformationType.Split("::") with
                 | [| _; moduleName'; resourceType' |] ->
                     let moduleName, resourceType = cloudformationMappings(moduleName', resourceType')
                     let pulumiType = $"aws:{moduleName.ToLower()}/{lowerFirst resourceType}:{resourceType}"
-                    if availableTypes.Contains pulumiType then
-                        append $"| \"{cloudformationType}\" -> Some \"{pulumiType}\""
-                        mappedTypes <- mappedTypes + 1
-                    else
-                        append $"// | \"{cloudformationType}\" -> Error \"Mapped invalid pulumi type: {pulumiType}\""
+                    for awsPulumiType in availableTypes do
+                        match awsPulumiType.Split ':' with
+                        | [| _; ModuleName pulumiModuleName; pulumiResourceName |] ->
+                            if moduleName.ToLower() = pulumiModuleName.ToLower() && pulumiResourceName.ToLower() = resourceType.ToLower() then
+                                append $"| \"{cloudformationType}\" -> Some \"{awsPulumiType}\""
+                                mappedTypes <- mappedTypes + 1
+                                correspondingTypeFound <- true
+                        | _ ->
+                            ()
+                | _ ->
+                    ()
 
-                | otherwise ->
-                    append $"//| \"{cloudformationType}\" -> Error \"TODO invalid type: {cloudformationType}\""
+                if not correspondingTypeFound then
+                    append $"// | \"{cloudformationType}\" -> Error \"not found\""
 
             append "| _ -> None"
             append ""
