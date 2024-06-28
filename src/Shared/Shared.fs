@@ -59,6 +59,7 @@ type AwsCloudFormationResourcesResponse = {
     resources: AwsCloudFormationResource list
     pulumiImportJson: string
     warnings: string list
+    errors: string list
     templateBody: string
 }
 

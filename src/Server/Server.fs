@@ -448,8 +448,12 @@ let searchAws (request: AwsSearchRequest) = task {
 let getAwsCloudFormationStacks() = task {
     try
         let! response = cloudFormationClient().DescribeStacksAsync()
+        let stacks =
+            response.Stacks
+            |> Seq.sortByDescending (fun stack -> stack.CreationTime)
+
         return Ok [
-            for stack in response.Stacks do
+            for stack in stacks do
                 { stackId = stack.StackId
                   stackName = stack.StackName
                   status = stack.StackStatus.Value
@@ -468,21 +472,28 @@ let parseCloudFormationType (resourceType: string) =
     | [| _; moduleName; resource |] -> moduleName, resource
     | _ -> failwith $"Could not parse CloudFormation resource type: {resourceType}"
 
+let cloudFormationResourceToSkip = set [
+    "AWS::CloudFormation::CustomResource"
+    "AWS::CDK::Metadata"
+]
+
 let getAwsCloudFormationResources (stack: AwsCloudFormationStack) = task {
     try
         let client = cloudFormationClient()
         let! stackTemplate = client.GetTemplateAsync(GetTemplateRequest(StackName=stack.stackId))
         let! response = client.ListStackResourcesAsync(ListStackResourcesRequest(StackName=stack.stackId))
-        let cloudformationResources =  [
-            for resource in response.StackResourceSummaries do
+
+        let cloudformationResources =
+            response.StackResourceSummaries
+            |> Seq.filter (fun resource -> not (cloudFormationResourceToSkip.Contains resource.ResourceType))
+            |> Seq.map (fun resource ->
                 { logicalId = resource.LogicalResourceId
                   resourceId = resource.PhysicalResourceId
-                  resourceType = resource.ResourceType }
-        ]
+                  resourceType = resource.ResourceType })
 
         let pulumiImportJson = JObject()
         let resourcesJson = JArray()
-        let warnings = ResizeArray()
+        let errors = ResizeArray()
 
         for resource in cloudformationResources do
             let resourceJson = JObject()
@@ -491,7 +502,7 @@ let getAwsCloudFormationResources (stack: AwsCloudFormationStack) = task {
                 resourceJson.Add("type", pulumiType)
             | None ->
                 resourceJson.Add("type", resource.resourceType)
-                warnings.Add $"CloudFormation resource '{resource.resourceType}' did not have a corresponding Pulumi type"
+                errors.Add $"CloudFormation resource '{resource.resourceType}' did not have a corresponding Pulumi type"
 
             resourceJson.Add("id", resource.resourceId)
             resourceJson.Add("name", resource.logicalId.Replace("-", "_"))
@@ -499,9 +510,10 @@ let getAwsCloudFormationResources (stack: AwsCloudFormationStack) = task {
 
         pulumiImportJson.Add("resources", resourcesJson)
         return Ok {
-            resources = cloudformationResources
+            resources = List.ofSeq cloudformationResources
             pulumiImportJson = pulumiImportJson.ToString(Formatting.Indented)
-            warnings = Seq.toList warnings
+            warnings = []
+            errors = List.ofSeq errors
             templateBody = stackTemplate.TemplateBody
         }
     with
@@ -652,8 +664,43 @@ let tempDirectory (f: string -> 't) =
     finally
         Directory.Delete(dir, true)
 
+let isValidJson (json: string) =
+    try
+        let _ = JObject.Parse json
+        true
+    with
+    | _ -> false
+
+let invalidTypesInImportJson (json: string) =
+    let parsedJson = JObject.Parse json
+    if parsedJson.ContainsKey "resources" && parsedJson.["resources"].Type = JTokenType.Array then
+        let resources = parsedJson["resources"] :?> JArray
+        resources
+        |> Seq.filter (fun resource -> resource.Type = JTokenType.Object)
+        |> Seq.map (fun resource -> resource :?> JObject)
+        |> Seq.choose (fun resource ->
+            let resourceType = resource["type"].ToObject<string>()
+            if resourceType.StartsWith "AWS::" || resourceType.Split(":").Length <> 3
+            then Some resourceType
+            else None)
+        |> Seq.distinct
+    else
+        Seq.empty
+
 let importPreview (request: ImportPreviewRequest) = task {
     try
+        if not (isValidJson request.pulumiImportJson) then
+            return Error "Invalid JSON provided for Pulumi Import JSON"
+        else
+        let invalidTypes = invalidTypesInImportJson request.pulumiImportJson
+        if not (Seq.isEmpty invalidTypes) then
+            let types =
+                invalidTypes
+                |> Seq.map (fun token -> $"'{token}'")
+                |> String.concat ", "
+
+            return Error $"Invalid Pulumi resource types found in the Import JSON: {types}"
+        else
         let! pulumiCli = pulumiCliBinary()
         let response = tempDirectory <| fun tempDir ->
             let exec (args:string) =

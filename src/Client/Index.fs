@@ -830,6 +830,32 @@ let AzureImporter() =
         ]
 
 [<ReactComponent>]
+let CloudFormationErrorMessageOnPreview() = Html.p [
+    prop.className "subtitle"
+    prop.style [
+        style.marginTop 10
+        style.marginBottom 20
+        style.fontSize 16
+    ]
+    prop.children [
+        Html.i [
+            prop.className "fas fa-exclamation-triangle"
+            prop.style [ style.color.red; style.marginRight 10 ]
+        ]
+
+        Html.span "There are errors in the generated import JSON. "
+        Html.span "You might need to edit the import file manually them before proceeding. "
+        Html.span "Alternatively, you can file an issue on our "
+        Html.a [
+            prop.href "https://github.com/Zaid-Ajaj/pulumi-tool-importer"
+            prop.text "GitHub Repository"
+        ]
+        Html.span " so we can fix the problem"
+    ]
+]
+
+
+[<ReactComponent>]
 let AwsCloudFormationResourcesByStack stack =
     let tab, setTab = React.useState "resources"
     let response = React.useDeferred(serverApi.getAwsCloudFormationResources stack, [| stack.stackId |])
@@ -897,6 +923,16 @@ let AwsCloudFormationResourcesByStack stack =
                                     prop.className "is-active"
                             ]
 
+                        if not (List.isEmpty response.errors) then
+                            Html.li [
+                                prop.children [
+                                    Html.a [ Html.span $"Errors ({List.length response.errors})" ]
+                                ]
+                                prop.onClick (fun _ -> setTab "errors")
+                                if tab = "errors" then
+                                    prop.className "is-active"
+                            ]
+
                         Html.li [
                             prop.children [
                                 Html.a [ Html.span "Import Preview" ]
@@ -911,6 +947,9 @@ let AwsCloudFormationResourcesByStack stack =
 
             match tab with
             | "preview" ->
+                if not (List.isEmpty response.errors) then
+                    CloudFormationErrorMessageOnPreview()
+
                 ImportPreview(response.pulumiImportJson)
 
             | "import-json" ->
@@ -927,6 +966,11 @@ let AwsCloudFormationResourcesByStack stack =
 
             | "warnings" ->
                 response.warnings
+                |> String.concat "\n\n---\n\n"
+                |> MarkdownContent
+
+            | "errors" ->
+                response.errors
                 |> String.concat "\n\n---\n\n"
                 |> MarkdownContent
 
