@@ -126,6 +126,6 @@ let remapSpecifications = Map.ofList [
     "AWS::EC2::VolumeAttachment" => {
         pulumiType = "aws:ec2/volumeAttachment:VolumeAttachment"
         importIdentityParts = ["Device"; "VolumeId"; "InstanceId"]
-        delimiter = "_"
+        delimiter = ":"
     }
 ]
