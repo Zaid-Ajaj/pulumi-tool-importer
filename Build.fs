@@ -229,17 +229,6 @@ Target.create "GenerateAwsCloudFormation" (fun _ ->
     }
 )
 
-Target.create "CloudFormationTypes" (fun _ ->
-    let repo = Path.getFullName "../pulumi-aws-native"
-    let docs = Path.Combine(repo, "aws-cloudformation-schema")
-    let types = ResizeArray()
-    for file in Directory.EnumerateFiles(docs, "*.json", SearchOption.AllDirectories) do
-        let schema = JObject.Parse(File.ReadAllText file)
-        types.Add(schema["typeName"].ToObject<string>())
-
-    File.WriteAllLines("cloudformation.txt", types)
-)
-
 open Fake.Core.TargetOperators
 
 let dependencies = [

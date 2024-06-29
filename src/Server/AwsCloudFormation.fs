@@ -415,8 +415,8 @@ let mapToPulumi = function
 | "AWS::EC2::Route" -> Some "aws:ec2/route:Route"
 | "AWS::EC2::RouteTable" -> Some "aws:ec2/routeTable:RouteTable"
 | "AWS::EC2::SecurityGroup" -> Some "aws:ec2/securityGroup:SecurityGroup"
-// | "AWS::EC2::SecurityGroupEgress" -> Error "not found"
-// | "AWS::EC2::SecurityGroupIngress" -> Error "not found"
+| "AWS::EC2::SecurityGroupEgress" -> Some "aws:vpc/securityGroupEgressRule:SecurityGroupEgressRule"
+| "AWS::EC2::SecurityGroupIngress" -> Some "aws:vpc/securityGroupIngressRule:SecurityGroupIngressRule"
 // | "AWS::EC2::SnapshotBlockPublicAccess" -> Error "not found"
 // | "AWS::EC2::SpotFleet" -> Error "not found"
 | "AWS::EC2::Subnet" -> Some "aws:ec2/subnet:Subnet"
@@ -447,7 +447,7 @@ let mapToPulumi = function
 | "AWS::EC2::VPCEndpointConnectionNotification" -> Some "aws:ec2/vpcEndpointConnectionNotification:VpcEndpointConnectionNotification"
 | "AWS::EC2::VPCEndpointService" -> Some "aws:ec2/vpcEndpointService:VpcEndpointService"
 // | "AWS::EC2::VPCEndpointServicePermissions" -> Error "not found"
-// | "AWS::EC2::VPCGatewayAttachment" -> Error "not found"
+| "AWS::EC2::VPCGatewayAttachment" -> Some "aws:ec2/internetGatewayAttachment:InternetGatewayAttachment"
 | "AWS::EC2::VPCPeeringConnection" -> Some "aws:ec2/vpcPeeringConnection:VpcPeeringConnection"
 | "AWS::EC2::VPNConnection" -> Some "aws:ec2/vpnConnection:VpnConnection"
 | "AWS::EC2::VPNConnectionRoute" -> Some "aws:ec2/vpnConnectionRoute:VpnConnectionRoute"
@@ -1287,4 +1287,4 @@ let mapToPulumi = function
 // | "Alexa::ASK::Skill" -> Error "not found"
 | _ -> None
 
-// Mapped number of types: 612 / 1279 (remaining: 667)
+// Mapped number of types: 615 / 1279 (remaining: 664)

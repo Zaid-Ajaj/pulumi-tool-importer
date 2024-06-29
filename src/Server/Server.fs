@@ -26,11 +26,9 @@ open Amazon.ResourceExplorer2.Model
 open Amazon.Runtime
 open Amazon.SecurityToken
 open Amazon.SecurityToken.Model
-open Azure.Identity
-open Azure.ResourceManager
+
 open Microsoft.Extensions.Logging
 open Amazon.EC2
-open Humanizer
 
 let unsetDefaultRegion = "__default__"
 
@@ -88,7 +86,7 @@ let cloudWatchEventsClient(region: string) =
     else
         new AmazonCloudWatchEventsClient(awsEnvCredentials(), RegionEndpoint.GetBySystemName region)
 
-let armClient() = ArmClient(AzureCliCredential())
+
 
 let getCallerIdentity() = task {
     try
@@ -609,7 +607,6 @@ let parseCloudFormationType (resourceType: string) =
     | _ -> failwith $"Could not parse CloudFormation resource type: {resourceType}"
 
 
-
 let getAwsCloudFormationResources (stack: AwsCloudFormationStack) = task {
     try
         let client = cloudFormationClient stack.region
@@ -688,99 +685,6 @@ let getPulumiVersion() = task {
     let! binary = pulumiCliBinary()
     let! output = Cli.Wrap(binary).WithArguments("version").ExecuteBufferedAsync()
     return output.StandardOutput
-}
-
-let azureAccount() = task {
-    try
-        let! output = Cli.Wrap("az").WithArguments("account show").ExecuteBufferedAsync()
-        if output.ExitCode = 0 then
-            let json = JObject.Parse(output.StandardOutput)
-            return Ok {
-                subscriptionId = json.["id"].ToObject<string>()
-                subscriptionName =  json.["name"].ToObject<string>()
-                userName =
-                    if json.ContainsKey "user" then
-                        json.["user"].["name"].ToObject<string>()
-                    else
-                        ""
-            }
-        else
-            return Error $"Error while called 'az account show': {output.StandardError}"
-    with
-    | error ->
-        let errorType = error.GetType().Name
-        return Error $"{errorType}: {error.Message}"
-}
-
-let getDefaultSubscription() = task {
-    match! azureAccount() with
-    | Ok account ->
-        let defaultSubscription =
-            armClient().GetSubscriptions()
-                |> Seq.tryFind (fun sub -> sub.Id.SubscriptionId = account.subscriptionId)
-                |> Option.defaultValue (armClient().GetDefaultSubscription())
-        return Ok defaultSubscription
-    | Error error ->
-        return Error $"Error occurred while getting the default subscription: {error}"
-}
-
-let getResourceGroups() = task {
-    try
-        let! subscription = getDefaultSubscription()
-        return match subscription with
-               | Ok subscriptionResource ->
-                    let groups = subscriptionResource.GetResourceGroups()
-                    Ok ([ for group in groups -> group.Id.Name ] |> List.sortBy (fun name -> name.ToLower()))
-               | Error error -> Error $"Could not find resource gropus: {error}"
-    with
-    | ex ->
-        let errorType = ex.GetType().Name
-        return Error $"{errorType}: {ex.Message}"
-}
-
-let getResourcesUnderResourceGroup (resourceGroupName: string) = task {
-    try
-        let! subscription = getDefaultSubscription()
-        match subscription with
-        | Ok subscriptionResource ->
-            let resourceGroup = subscriptionResource.GetResourceGroup(resourceGroupName)
-            let resources: AzureResource list = [
-                for page in resourceGroup.Value.GetGenericResources().AsPages() do
-                for resource in page.Values do
-                    yield {
-                        resourceId = resource.Data.Id.ToString()
-                        resourceType = resource.Id.ResourceType.ToString()
-                        name = resource.Id.Name
-                    }
-            ]
-
-            let pulumiImportJson = JObject()
-            let resourcesJson = JArray()
-            let resourceGroupJson = JObject()
-            resourceGroupJson.Add("type", "azure-native:resources:ResourceGroup")
-            resourceGroupJson.Add("name", resourceGroupName)
-            resourceGroupJson.Add("id", resourceGroup.Value.Id.ToString())
-            resourcesJson.Add(resourceGroupJson)
-
-            for resource in resources do
-                let azureNativeType = AzureResourceTokens.fromAzureSpecToPulumi resource.resourceType
-                let resourceJson = JObject()
-                resourceJson.Add("type", azureNativeType)
-                resourceJson.Add("name", resource.name)
-                resourceJson.Add("id", resource.resourceId)
-                resourcesJson.Add(resourceJson)
-
-            pulumiImportJson.Add("resources", resourcesJson)
-
-            return Ok {
-                azureResources = resources
-                pulumiImportJson = pulumiImportJson.ToString(Formatting.Indented)
-            }
-        | Error error -> return Error $"Could not find resources in {resourceGroupName}: {error}"
-    with
-    | error ->
-        let errorType = error.GetType().Name
-        return Error $"{errorType}: {error.Message}"
 }
 
 let tempDirectory (f: string -> 't) =
@@ -908,9 +812,9 @@ let importerApi = {
     getPulumiVersion = getPulumiVersion >> Async.AwaitTask
     awsCallerIdentity = getCallerIdentity >> Async.AwaitTask
     searchAws = searchAws >> Async.AwaitTask
-    getResourceGroups = getResourceGroups >> Async.AwaitTask
-    azureAccount = azureAccount >> Async.AwaitTask
-    getResourcesUnderResourceGroup = getResourcesUnderResourceGroup >> Async.AwaitTask
+    getResourceGroups = Azure.getResourceGroups >> Async.AwaitTask
+    azureAccount = Azure.account >> Async.AwaitTask
+    getResourcesUnderResourceGroup = Azure.getResourcesUnderResourceGroup >> Async.AwaitTask
     importPreview = importPreview >> Async.AwaitTask
     getAwsCloudFormationStacks = getAwsCloudFormationStacks >> Async.AwaitTask
     getAwsCloudFormationResources = getAwsCloudFormationResources >> Async.AwaitTask

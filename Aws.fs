@@ -256,8 +256,10 @@ let cloudformationMappings = function
 | "EC2", "VPCCidrBlock" -> "EC2", "VpcCidrBlock"
 | "EC2", "VPCDHCPOptionsAssociation" -> "EC2", "VpcdhcpOptionsAssociation"
 | "EC2", "VPCEndpoint" -> "EC2", "VpcEndpoint"
-| "EC2", "SecurityGroupEgress" -> "EC2", "SecurityGroupEgressRule"
-| "EC2", "SecurityGroupIngress" -> "EC2", "SecurityGroupIngressRule"
+| "EC2", "SecurityGroupEgress" -> "Vpc", "SecurityGroupEgressRule"
+| "EC2", "SecurityGroupIngress" -> "Vpc", "SecurityGroupIngressRule"
+// todo: verify this
+| "EC2", "VPCGatewayAttachment" -> "EC2", "InternetGatewayAttachment"
 | "IAM", "OIDCProvider" -> "Iam", "OpenIdConnectProvider"
 | moduleName, resourceType -> moduleName, resourceType
 
