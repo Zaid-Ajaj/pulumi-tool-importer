@@ -101,6 +101,35 @@ let AzureTile() = Html.div [
     ]
 ]
 
+[<ReactComponent>]
+let GoogleTile() = Html.div [
+    prop.onClick (fun _ -> Router.navigate "google-start")
+    prop.children [
+        Html.img [
+            prop.src "https://www.pulumi.com/logos/pkg/gcp.svg"
+            prop.style [
+                style.height 80
+                style.width 130
+            ]
+        ]
+    ]
+
+    prop.style [
+        style.margin 10
+        style.fontSize 20
+        style.height 100
+        style.width 200
+        style.cursor.pointer
+        style.textAlign.center
+        style.display.inlineBlock
+        style.position.relative
+        style.overflow.hidden
+        style.paddingTop 10
+        style.border(2, borderStyle.solid, color.black)
+        style.boxShadow(0, 0, 2, 0, color.black)
+    ]
+]
+
 
 [<ReactComponent>]
 let ImportPreviewTile() = Html.div [
@@ -159,6 +188,10 @@ let View() =
                         Azure.StartPage()
                     | [ "azure" ] ->
                         Azure.ResourceGroups()
+                    | [ "google-start" ] ->
+                        Google.StartPage()
+                    | [ "google-asset-inventory" ] ->
+                        Google.AssetInventory()
                     | [ "import-preview" ] ->
                         MarkdownContent """
 ### Pulumi Import Preview
@@ -174,6 +207,7 @@ Edit the JSON content and preview the import results in different languages alon
 
                         AwsTile()
                         AzureTile()
+                        GoogleTile()
 
                         Html.p [
                            prop.text "Experiment with Pulumi Import and preview results:"

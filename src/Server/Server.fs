@@ -820,6 +820,8 @@ let importerApi = {
     getAwsCloudFormationResources = getAwsCloudFormationResources >> Async.AwaitTask
     getAwsCloudFormationGeneratedTemplates = getAwsCloudFormationGeneratedTemplates >> Async.AwaitTask
     getAwsCloudFormationGeneratedTemplate = getAwsCloudFormationGeneratedTemplate >> Async.AwaitTask
+    googleProjects = Google.projects >> Async.AwaitTask
+    googleResourcesByProject = Google.resourcesByProject >> Async.AwaitTask
 }
 
 let pulumiSchemaDocs = Remoting.documentation "Pulumi Importer" [ ]

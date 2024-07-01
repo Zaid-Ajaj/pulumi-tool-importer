@@ -11,9 +11,9 @@
         <Compile Include="Import.fs" />
         <Compile Include="Aws.fs" />
         <Compile Include="Azure.fs" />
+        <Compile Include="Google.fs" />
         <Compile Include="Index.fs" />
         <Compile Include="App.fs" />
-       
     </ItemGroup>
     <ItemGroup>
         <ProjectReference Include="..\Shared\Shared.fsproj" />

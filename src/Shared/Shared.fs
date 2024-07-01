@@ -112,6 +112,25 @@ type AwsGeneratedTemplateResponse = {
     errors: string list
 }
 
+type GoogleProject = {
+    projectId: string
+    projectName: string
+}
+
+type GoogleResource = {
+    resourceType: string
+    name: string
+    displayName: string
+    location: string
+    state: string
+}
+
+type SearchGoogleProjectRequest = {
+    projectId: string
+    query: string option
+    maxResult: int
+}
+
 type ImporterApi = {
     getPulumiVersion : unit -> Async<string>
     awsCallerIdentity : unit -> Async<Result<AwsCallerIdentity, string>>
@@ -123,5 +142,7 @@ type ImporterApi = {
     azureAccount : unit -> Async<Result<AzureAccount, string>>
     getResourceGroups: unit -> Async<Result<string list, string>>
     getResourcesUnderResourceGroup: string -> Async<Result<AzureSearchResponse, string>>
+    googleProjects: unit -> Async<Result<GoogleProject list, string>>
+    googleResourcesByProject: SearchGoogleProjectRequest -> Async<Result<GoogleResource list, string>>
     importPreview: ImportPreviewRequest -> Async<Result<ImportPreviewResponse, string>>
 }
