@@ -88,22 +88,27 @@ let cloudWatchEventsClient(region: string) =
 
 
 let awsFirstAccountAlias() =
-    let credentials =
-        Cli.Wrap("aws")
-           .WithArguments("iam list-account-aliases")
-           .WithValidation(CommandResultValidation.None)
-           .ExecuteBufferedAsync()
-           .GetAwaiter().GetResult()
+    try
+        let credentials =
+            Cli.Wrap("aws")
+               .WithArguments("iam list-account-aliases --output json")
+               .WithValidation(CommandResultValidation.None)
+               .ExecuteBufferedAsync()
+               .GetAwaiter().GetResult()
 
-    if credentials.ExitCode <> 0 then
-        None
-    else
-        let output = JObject.Parse credentials.StandardOutput
-        let aliases = output["AccountAliases"].ToObject<string[]>()
-        if aliases.Length > 0 then
-            Some aliases[0]
-        else
+        if credentials.ExitCode <> 0 then
             None
+        else
+            let output = JObject.Parse credentials.StandardOutput
+            let aliases = output["AccountAliases"].ToObject<string[]>()
+            if aliases.Length > 0 then
+                Some aliases[0]
+            else
+                None
+    with
+    | error ->
+        printfn $"error occurred while running 'aws iam list-account-aliases --output json':\n%A{error}"
+        None
 
 let getCallerIdentity() = task {
     try
