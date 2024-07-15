@@ -15,6 +15,7 @@ type RateLimited<'T> =
 
 type AwsCallerIdentity = {
     accountId: string
+    accountAlias: string option
     arn: string
     userId: string
 }

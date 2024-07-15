@@ -10,15 +10,21 @@ let StartPage() =
         MarkdownContent """
 ### Import from Amazon Web Services
 
-The importer tool requires you to authenticate with AWS using the [AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-quickstart.html).
+The importer tool uses the [AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-quickstart.html) to authenticate with AWS and access its services.
 
-Start by [logging in](https://docs.aws.amazon.com/signin/latest/userguide/command-line-sign-in.html) as follows:
+We assume that you already have configured your AWS CLI with the necessary permissions to access your resources.
 
+If you haven't done so, please follow the [AWS CLI configuration guide](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-quickstart.html).
+
+You can verify that you are logged in by running the following command:
+
+```bash
+aws configure export-credentials
 ```
-aws sso login
-```
 
-If you are already logged in, choose one of the following options to import resources:
+You can also override which profile to use by setting the `AWS_PROFILE` environment variable.
+
+If you are ready to go, choose one of the following options to start importing resources:
 """
         Html.br [  ]
         Html.p [
@@ -117,7 +123,11 @@ let Page(awsPage: string -> ReactElement) =
 
                 Html.span [
                     prop.style [ style.fontSize 18; style.marginRight 10 ]
-                    prop.text $"Logged in as {callerIdentity.userId}"
+                    match callerIdentity.accountAlias with
+                    | None ->
+                        prop.text $"Logged in as {callerIdentity.userId} (Account ID: {callerIdentity.accountId})"
+                    | Some alias ->
+                        prop.text $"Logged in as {callerIdentity.userId} ({alias})"
                 ]
 
                 Html.div [

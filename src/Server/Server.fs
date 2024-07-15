@@ -2,15 +2,12 @@ module Server
 
 open System
 open System.Collections.Generic
-open System.Diagnostics
 open System.IO
 open Amazon.CloudFormation
 open Amazon.CloudFormation.Model
-open Amazon.CloudWatch
 open Amazon.CloudWatchEvents
 open Amazon.EC2.Model
 open Amazon.SQS
-open Amazon.SQS.Model
 open Fable.Remoting.Server
 open Fable.Remoting.Giraffe
 open Newtonsoft.Json
@@ -87,17 +84,34 @@ let cloudWatchEventsClient(region: string) =
         new AmazonCloudWatchEventsClient(awsEnvCredentials(), RegionEndpoint.GetBySystemName region)
 
 
+let awsFirstAccountAlias() =
+    let credentials =
+        Cli.Wrap("aws")
+           .WithArguments("iam list-account-aliases")
+           .WithValidation(CommandResultValidation.None)
+           .ExecuteBufferedAsync()
+           .GetAwaiter().GetResult()
+
+    if credentials.ExitCode <> 0 then
+        None
+    else
+        let output = JObject.Parse credentials.StandardOutput
+        let aliases = output["AccountAliases"].ToObject<string[]>()
+        if aliases.Length > 0 then
+            Some aliases[0]
+        else
+            None
 
 let getCallerIdentity() = task {
     try
         let client = securityTokenServiceClient(unsetDefaultRegion)
         let! response = client.GetCallerIdentityAsync(GetCallerIdentityRequest())
-
         if response.HttpStatusCode <> System.Net.HttpStatusCode.OK then
             return Error $"Failed to get caller identity: {response.HttpStatusCode}"
         else
             return Ok {
                 accountId = response.Account
+                accountAlias = awsFirstAccountAlias()
                 userId = response.UserId
                 arn = response.Arn
             }
