@@ -43,8 +43,11 @@ let awsEnvCredentials() =
         let output = JObject.Parse credentials.StandardOutput
         let accessKeyId = output["AccessKeyId"].ToObject<string>()
         let secretAccessKey = output["SecretAccessKey"].ToObject<string>()
-        let sessionToken = output["SessionToken"].ToObject<string>()
-        SessionAWSCredentials(accessKeyId, secretAccessKey, sessionToken)
+        if not (output.ContainsKey "SessionToken") then
+            BasicAWSCredentials(accessKeyId, secretAccessKey) :> AWSCredentials
+        else
+            let sessionToken = output["SessionToken"].ToObject<string>()
+            SessionAWSCredentials(accessKeyId, secretAccessKey, sessionToken) :> AWSCredentials
 
 let resourceExplorerClient(region: string) =
     if region = unsetDefaultRegion then

@@ -14,12 +14,18 @@ let PulumiTitleWithVersion() =
             Html.div "Pulumi Importer"
             Html.div [
                 prop.style [ style.fontSize 13; style.marginTop 10; style.marginLeft 10 ]
-                prop.text $" using Pulumi {version}"
+                prop.text $" using Pulumi {version} | Importer v0.21.0"
             ]
         ]
 
     | _ ->
-         Html.div "Pulumi Importer"
+         React.fragment [
+            Html.div "Pulumi Importer"
+            Html.div [
+                prop.style [ style.fontSize 13; style.marginTop 10; style.marginLeft 10 ]
+                prop.text $" v0.21.0"
+            ]
+        ]
 
 [<ReactComponent>]
 let ProviderTile(name: string, link: string) = Html.div [
