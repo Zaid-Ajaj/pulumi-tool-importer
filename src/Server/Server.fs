@@ -485,23 +485,31 @@ let searchAws (request: AwsSearchRequest) = task {
         return Error $"{errorType}: {error.Message}"
 }
 
+let rec awsCloudFormationStacks (nextToken: string option) (region: string) = task {
+    let stacks = ResizeArray()
+    let client = cloudFormationClient region
+    let request = ListStacksRequest()
+    nextToken |> Option.iter (fun token -> request.NextToken <- token)
+    let! response = client.ListStacksAsync(request)
+    stacks.AddRange response.StackSummaries
+    if not (isNull response.NextToken) then
+        let! next = awsCloudFormationStacks (Some response.NextToken) region
+        stacks.AddRange next
+    return stacks
+}
+
 let getAwsCloudFormationStacks(region: string) = task {
     try
-        let client = cloudFormationClient region
-        let! response = client.DescribeStacksAsync()
-        let stacks =
-            response.Stacks
-            |> Seq.sortByDescending (fun stack -> stack.CreationTime)
-
+        let! stacks = awsCloudFormationStacks None region
+        let sorted = stacks |> Seq.sortBy (fun stack -> stack.StackName)
         return Ok [
-            for stack in stacks do
+            for stack in sorted do
                 { stackId = stack.StackId
                   stackName = stack.StackName
                   region = region
                   status = stack.StackStatus.Value
                   statusReason =  stack.StackStatusReason
-                  description = stack.Description
-                  tags = Map.ofList [ for tag in stack.Tags -> tag.Key, tag.Value ] }
+                  description = stack.TemplateDescription }
         ]
     with
     | error ->

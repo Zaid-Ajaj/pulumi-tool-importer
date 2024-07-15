@@ -48,7 +48,6 @@ type AwsCloudFormationStack = {
     status: string
     statusReason: string
     description: string
-    tags: Map<string, string>
     region: string
 }
 
