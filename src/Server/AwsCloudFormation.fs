@@ -422,7 +422,7 @@ let mapToPulumi = function
 | "AWS::EC2::Subnet" -> Some "aws:ec2/subnet:Subnet"
 // | "AWS::EC2::SubnetCidrBlock" -> Error "not found"
 // | "AWS::EC2::SubnetNetworkAclAssociation" -> Error "not found"
-// | "AWS::EC2::SubnetRouteTableAssociation" -> Error "not found"
+| "AWS::EC2::SubnetRouteTableAssociation" -> Some "aws:ec2/routeTableAssociation:RouteTableAssociation"
 | "AWS::EC2::TrafficMirrorFilter" -> Some "aws:ec2/trafficMirrorFilter:TrafficMirrorFilter"
 | "AWS::EC2::TrafficMirrorFilterRule" -> Some "aws:ec2/trafficMirrorFilterRule:TrafficMirrorFilterRule"
 | "AWS::EC2::TrafficMirrorSession" -> Some "aws:ec2/trafficMirrorSession:TrafficMirrorSession"
@@ -507,11 +507,11 @@ let mapToPulumi = function
 | "AWS::ElasticBeanstalk::ConfigurationTemplate" -> Some "aws:elasticbeanstalk/configurationTemplate:ConfigurationTemplate"
 | "AWS::ElasticBeanstalk::Environment" -> Some "aws:elasticbeanstalk/environment:Environment"
 // | "AWS::ElasticLoadBalancing::LoadBalancer" -> Error "not found"
-// | "AWS::ElasticLoadBalancingV2::Listener" -> Error "not found"
+| "AWS::ElasticLoadBalancingV2::Listener" -> Some "aws:lb/listener:Listener"
 // | "AWS::ElasticLoadBalancingV2::ListenerCertificate" -> Error "not found"
 // | "AWS::ElasticLoadBalancingV2::ListenerRule" -> Error "not found"
 // | "AWS::ElasticLoadBalancingV2::LoadBalancer" -> Error "not found"
-// | "AWS::ElasticLoadBalancingV2::TargetGroup" -> Error "not found"
+| "AWS::ElasticLoadBalancingV2::TargetGroup" -> Some "aws:lb/targetGroup:TargetGroup"
 // | "AWS::ElasticLoadBalancingV2::TrustStore" -> Error "not found"
 // | "AWS::ElasticLoadBalancingV2::TrustStoreRevocation" -> Error "not found"
 | "AWS::Elasticsearch::Domain" -> Some "aws:elasticsearch/domain:Domain"
@@ -530,7 +530,7 @@ let mapToPulumi = function
 // | "AWS::Events::Endpoint" -> Error "not found"
 // | "AWS::Events::EventBus" -> Error "not found"
 // | "AWS::Events::EventBusPolicy" -> Error "not found"
-// | "AWS::Events::Rule" -> Error "not found"
+| "AWS::Events::Rule" -> Some "aws:cloudwatch/eventRule:EventRule"
 // | "AWS::Evidently::Experiment" -> Error "not found"
 | "AWS::Evidently::Feature" -> Some "aws:evidently/feature:Feature"
 | "AWS::Evidently::Launch" -> Some "aws:evidently/launch:Launch"
@@ -1287,4 +1287,4 @@ let mapToPulumi = function
 // | "Alexa::ASK::Skill" -> Error "not found"
 | _ -> None
 
-// Mapped number of types: 615 / 1279 (remaining: 664)
+// Mapped number of types: 619 / 1279 (remaining: 660)

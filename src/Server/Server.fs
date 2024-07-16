@@ -23,6 +23,8 @@ open Amazon.ResourceExplorer2.Model
 open Amazon.Runtime
 open Amazon.SecurityToken
 open Amazon.SecurityToken.Model
+open Amazon.ElasticLoadBalancingV2
+open Amazon.ElasticLoadBalancingV2.Model
 
 open Microsoft.Extensions.Logging
 open Amazon.EC2
@@ -86,6 +88,12 @@ let cloudWatchEventsClient(region: string) =
     else
         new AmazonCloudWatchEventsClient(awsEnvCredentials(), RegionEndpoint.GetBySystemName region)
 
+
+let elasticLoadBalancingV2Client(region: string) =
+    if region = unsetDefaultRegion then
+        new AmazonElasticLoadBalancingV2Client(awsEnvCredentials())
+    else
+        new AmazonElasticLoadBalancingV2Client(awsEnvCredentials(), RegionEndpoint.GetBySystemName region)
 
 let awsFirstAccountAlias() =
     try
@@ -579,7 +587,11 @@ let getAwsCloudFormationGeneratedTemplate (request: AwsGeneratedTemplateRequest)
             resourceDataByLogicalID.Add(resource.LogicalResourceId, resourceData)
 
         for resource in templateDetails.Resources do
-            if not (cloudFormationResourceToSkip.Contains resource.ResourceType) then
+            let includeResource =
+                not (cloudFormationResourceToSkip.Contains resource.ResourceType)
+                && not (resource.ResourceType.StartsWith "Custom")
+
+            if includeResource then
                 let resourceJson = JObject()
                 match AwsCloudFormationGeneratedTemplates.remapSpecifications.TryFind resource.ResourceType with
                 | None ->
@@ -631,12 +643,6 @@ let getAwsCloudFormationGeneratedTemplate (request: AwsGeneratedTemplateRequest)
         return Error $"{errorType}: {error.Message}"
 }
 
-let parseCloudFormationType (resourceType: string) =
-    match resourceType.Split "::" with
-    | [| _; moduleName; resource |] -> moduleName, resource
-    | _ -> failwith $"Could not parse CloudFormation resource type: {resourceType}"
-
-
 let getAwsCloudFormationResources (stack: AwsCloudFormationStack) = task {
     try
         let client = cloudFormationClient stack.region
@@ -646,27 +652,73 @@ let getAwsCloudFormationResources (stack: AwsCloudFormationStack) = task {
         let cloudformationResources =
             response.StackResourceSummaries
             |> Seq.filter (fun resource -> not (cloudFormationResourceToSkip.Contains resource.ResourceType))
+            |> Seq.filter (fun resource -> not (resource.ResourceType.StartsWith "Custom::"))
             |> Seq.map (fun resource ->
                 { logicalId = resource.LogicalResourceId
                   resourceId = resource.PhysicalResourceId
                   resourceType = resource.ResourceType })
 
+        let resourceTypes = Set [ for resource in cloudformationResources -> resource.resourceType ]
+
+        let! securityGroupRules = task {
+            if resourceTypes.Contains "AWS::EC2::SecurityGroup" then
+                let client = ec2Client stack.region
+                let! response = client.DescribeSecurityGroupRulesAsync(DescribeSecurityGroupRulesRequest())
+                return response.SecurityGroupRules
+            else
+                return ResizeArray()
+        }
+
+
+        let cloudFormationLoadBalancerType = "AWS::ElasticLoadBalancingV2::LoadBalancer"
+        let! loadBalancers = task {
+            if resourceTypes.Contains cloudFormationLoadBalancerType then
+                let client = elasticLoadBalancingV2Client stack.region
+                let! response = client.DescribeLoadBalancersAsync(DescribeLoadBalancersRequest())
+                return Map.ofList [ for lb in response.LoadBalancers -> lb.LoadBalancerArn, lb ]
+            else
+                return Map.empty
+        }
+
         let pulumiImportJson = JObject()
         let resourcesJson = JArray()
         let errors = ResizeArray()
 
+        let importResourceIds = ResizeArray()
+
         for resource in cloudformationResources do
             let resourceJson = JObject()
-            match AwsCloudFormation.mapToPulumi resource.resourceType with
-            | Some pulumiType ->
-                resourceJson.Add("type", pulumiType)
-            | None ->
-                resourceJson.Add("type", resource.resourceType)
-                errors.Add $"CloudFormation resource '{resource.resourceType}' did not have a corresponding Pulumi type"
+            if resource.resourceType = cloudFormationLoadBalancerType then
+                match loadBalancers.TryGetValue resource.resourceId with
+                | true, balancer when balancer.Type = LoadBalancerTypeEnum.Application ->
+                    resourceJson.Add("type", "aws:alb/loadBalancer:LoadBalancer")
+                | _ ->
+                    resourceJson.Add("type", "aws:elb/loadBalancer:LoadBalancer")
+            else
+                match AwsCloudFormation.mapToPulumi resource.resourceType with
+                | Some pulumiType ->
+                    resourceJson.Add("type", pulumiType)
+                | None ->
+                    resourceJson.Add("type", resource.resourceType)
+                    errors.Add $"CloudFormation resource '{resource.resourceType}' did not have a corresponding Pulumi type"
 
             resourceJson.Add("id", resource.resourceId)
             resourceJson.Add("name", resource.logicalId.Replace("-", "_"))
             resourcesJson.Add(resourceJson)
+            importResourceIds.Add(resource.resourceId)
+
+        for rule in securityGroupRules do
+            let alreadyIncluded = importResourceIds.Contains rule.SecurityGroupRuleId
+            let parentAdded = importResourceIds.Contains rule.GroupId
+            if not alreadyIncluded && parentAdded then
+                let resourceJson = JObject()
+                if rule.IsEgress then
+                    resourceJson.Add("type", "aws:vpc/securityGroupEgressRule:SecurityGroupEgressRule")
+                else
+                    resourceJson.Add("type", "aws:vpc/securityGroupIngressRule:SecurityGroupIngressRule")
+                resourceJson.Add("id", $"SecurityGroupEgressRule_{rule.SecurityGroupRuleId}")
+                resourceJson.Add("name", rule.SecurityGroupRuleId.Replace("-", "_"))
+                resourcesJson.Add(resourceJson)
 
         pulumiImportJson.Add("resources", resourcesJson)
         return Ok {
@@ -770,7 +822,7 @@ let importPreview (request: ImportPreviewRequest) = task {
                    .WithWorkingDirectory(tempDir)
                    .WithArguments(args)
                    .WithEnvironmentVariables(fun config ->
-                       if request.region <> "" then
+                       if request.region <> "" && request.region <> unsetDefaultRegion then
                             config
                                 .Set("PULUMI_CONFIG_PASSPHRASE", "whatever")
                                 .Set("AWS_REGION", request.region)
@@ -825,8 +877,9 @@ let importPreview (request: ImportPreviewRequest) = task {
                 generatedCode = generatedCode
                 stackState = stackState
                 warnings = warnings
+                standardOutput = pulumiImportOutput.StandardOutput
                 standardError =
-                    if String.IsNullOrWhiteSpace generatedCode
+                    if String.IsNullOrWhiteSpace generatedCode && not (String.IsNullOrWhiteSpace pulumiImportOutput.StandardError)
                     then Some pulumiImportOutput.StandardError
                     else None
             }

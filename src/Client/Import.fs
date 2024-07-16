@@ -132,6 +132,8 @@ let Preview(importJson: string, region: string) =
                 match response.standardError with
                 | Some error -> Tab("Import Errors", "error", tab, setTab)
                 | None -> ()
+
+                Tab("Output", "output", tab, setTab)
             ]
 
             match tab with
@@ -149,6 +151,10 @@ let Preview(importJson: string, region: string) =
                     prop.style [ style.color.red ]
                     prop.text (Option.defaultValue "" response.standardError)
                 ]
+
+            | "output" ->
+                Html.pre response.standardOutput
+
             | _ ->
                 Html.none
     ]

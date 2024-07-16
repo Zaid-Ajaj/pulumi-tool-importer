@@ -260,7 +260,11 @@ let cloudformationMappings = function
 | "EC2", "SecurityGroupIngress" -> "Vpc", "SecurityGroupIngressRule"
 // todo: verify this
 | "EC2", "VPCGatewayAttachment" -> "EC2", "InternetGatewayAttachment"
+| "EC2", "SubnetRouteTableAssociation" -> "EC2", "RouteTableAssociation"
 | "IAM", "OIDCProvider" -> "Iam", "OpenIdConnectProvider"
+| "Events", "Rule" -> "cloudwatch", "EventRule"
+| "ElasticLoadBalancingV2", "Listener" -> "lb", "Listener"
+| "ElasticLoadBalancingV2", "TargetGroup" -> "lb", "TargetGroup"
 | moduleName, resourceType -> moduleName, resourceType
 
 let (|ModuleName|_|) (input: string) =
@@ -300,7 +304,6 @@ let generateCloudFormationTypes(config: CloudFormationConfig) =
                 match cloudformationType.Split("::") with
                 | [| _; moduleName'; resourceType' |] ->
                     let moduleName, resourceType = cloudformationMappings(moduleName', resourceType')
-                    let pulumiType = $"aws:{moduleName.ToLower()}/{lowerFirst resourceType}:{resourceType}"
                     for awsPulumiType in availableTypes do
                         match awsPulumiType.Split ':' with
                         | [| _; ModuleName pulumiModuleName; pulumiResourceName |] ->

@@ -99,6 +99,7 @@ type ImportPreviewResponse = {
     stackState: string
     warnings: string list
     standardError: string option
+    standardOutput: string
 }
 type AwsGeneratedTemplateRequest = {
     templateName: string
