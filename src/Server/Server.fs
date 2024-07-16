@@ -716,8 +716,9 @@ let getAwsCloudFormationResources (stack: AwsCloudFormationStack) = task {
                     resourceJson.Add("type", "aws:vpc/securityGroupEgressRule:SecurityGroupEgressRule")
                 else
                     resourceJson.Add("type", "aws:vpc/securityGroupIngressRule:SecurityGroupIngressRule")
-                resourceJson.Add("id", $"SecurityGroupEgressRule_{rule.SecurityGroupRuleId}")
-                resourceJson.Add("name", rule.SecurityGroupRuleId.Replace("-", "_"))
+                resourceJson.Add("id", rule.SecurityGroupRuleId)
+                let ruleName = rule.SecurityGroupRuleId.Replace("-", "_")
+                resourceJson.Add("name", $"SecurityGroupRule_{ruleName}")
                 resourcesJson.Add(resourceJson)
 
         pulumiImportJson.Add("resources", resourcesJson)
