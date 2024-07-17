@@ -728,6 +728,9 @@ let getAwsCloudFormationResources (stack: AwsCloudFormationStack) = task {
             elif resource.resourceType = "AWS::ApiGateway::UsagePlanKey" then
                 let usagePlanKeyId = resource.resourceId.Replace(":", "/")
                 resourceJson.Add("id", usagePlanKeyId)
+            elif resource.resourceType = "AWS::EC2::VPCGatewayAttachment" then
+                let attachmentId = resource.resourceId.Replace("|", ":")
+                resourceJson.Add("id", attachmentId)
             elif resource.resourceType = routeTableAssociationType then
                 let routeTableAssociationId = resource.resourceId
                 let association =
