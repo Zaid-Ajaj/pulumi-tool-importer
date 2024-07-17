@@ -25,6 +25,8 @@ open Amazon.SecurityToken
 open Amazon.SecurityToken.Model
 open Amazon.ElasticLoadBalancingV2
 open Amazon.ElasticLoadBalancingV2.Model
+open Amazon.Route53
+open Amazon.Route53.Model
 
 open Microsoft.Extensions.Logging
 open Amazon.EC2
@@ -94,6 +96,12 @@ let elasticLoadBalancingV2Client(region: string) =
         new AmazonElasticLoadBalancingV2Client(awsEnvCredentials())
     else
         new AmazonElasticLoadBalancingV2Client(awsEnvCredentials(), RegionEndpoint.GetBySystemName region)
+
+let route53Client(region: string) =
+    if region = unsetDefaultRegion then
+        new AmazonRoute53Client(awsEnvCredentials())
+    else
+        new AmazonRoute53Client(awsEnvCredentials(), RegionEndpoint.GetBySystemName region)
 
 let awsFirstAccountAlias() =
     try
@@ -726,7 +734,7 @@ let getAwsCloudFormationResources (stack: AwsCloudFormationStack) = task {
             resources = List.ofSeq cloudformationResources
             pulumiImportJson = pulumiImportJson.ToString(Formatting.Indented)
             warnings = []
-            errors = List.ofSeq errors
+            errors = errors |> Seq.distinct |> Seq.toList
             templateBody = stackTemplate.TemplateBody
         }
     with

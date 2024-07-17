@@ -14,38 +14,12 @@ let PulumiTitleWithVersion() =
             Html.div "Pulumi Importer"
             Html.div [
                 prop.style [ style.fontSize 13; style.marginTop 10; style.marginLeft 10 ]
-                prop.text $" using Pulumi {version} | Importer v0.25.0"
+                prop.text $" using Pulumi {version} | Importer v0.26.0"
             ]
         ]
 
     | _ ->
-         React.fragment [
-            Html.div "Pulumi Importer"
-            Html.div [
-                prop.style [ style.fontSize 13; style.marginTop 10; style.marginLeft 10 ]
-                prop.text " v0.25.0"
-            ]
-        ]
-
-[<ReactComponent>]
-let ProviderTile(name: string, link: string) = Html.div [
-    prop.text name
-    prop.onClick (fun _ -> Router.navigate(link))
-    prop.style [
-        style.margin 10
-        style.fontSize 20
-        style.height 60
-        style.width 200
-        style.cursor.pointer
-        style.textAlign.center
-        style.display.inlineBlock
-        style.position.relative
-        style.overflow.hidden
-        style.paddingTop 10
-        style.border(2, borderStyle.solid, color.black)
-        style.boxShadow(0, 0, 2, 0, color.black)
-    ]
-]
+        Html.div "Pulumi Importer"
 
 [<ReactComponent>]
 let AwsTile() = Html.div [
