@@ -14,7 +14,7 @@ let PulumiTitleWithVersion() =
             Html.div "Pulumi Importer"
             Html.div [
                 prop.style [ style.fontSize 13; style.marginTop 10; style.marginLeft 10 ]
-                prop.text $" using Pulumi {version} | Importer v0.26.0"
+                prop.text $" using Pulumi {version} | Importer v0.27.0"
             ]
         ]
 

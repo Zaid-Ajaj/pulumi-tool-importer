@@ -677,8 +677,8 @@ let getAwsCloudFormationResources (stack: AwsCloudFormationStack) = task {
                 return ResizeArray()
         }
 
-
         let cloudFormationLoadBalancerType = "AWS::ElasticLoadBalancingV2::LoadBalancer"
+        let routeTableAssociationType = "AWS::EC2::SubnetRouteTableAssociation"
         let! loadBalancers = task {
             if resourceTypes.Contains cloudFormationLoadBalancerType then
                 let client = elasticLoadBalancingV2Client stack.region
@@ -686,6 +686,15 @@ let getAwsCloudFormationResources (stack: AwsCloudFormationStack) = task {
                 return Map.ofList [ for lb in response.LoadBalancers -> lb.LoadBalancerArn, lb ]
             else
                 return Map.empty
+        }
+
+        let! routeTables = task {
+            if resourceTypes.Contains routeTableAssociationType then
+                let client = ec2Client stack.region
+                let! response = client.DescribeRouteTablesAsync(DescribeRouteTablesRequest())
+                return response.RouteTables
+            else
+                return ResizeArray()
         }
 
         let pulumiImportJson = JObject()
@@ -710,7 +719,31 @@ let getAwsCloudFormationResources (stack: AwsCloudFormationStack) = task {
                     resourceJson.Add("type", resource.resourceType)
                     errors.Add $"CloudFormation resource '{resource.resourceType}' did not have a corresponding Pulumi type"
 
-            resourceJson.Add("id", resource.resourceId)
+            if resource.resourceType = "AWS::ApiGateway::Method" then
+                let methodId = resource.resourceId.Replace("|", "/")
+                resourceJson.Add("id", methodId)
+            elif resource.resourceType = "AWS::EC2::Route" then
+                let routeId = resource.resourceId.Replace("|", "_")
+                resourceJson.Add("id", routeId)
+            elif resource.resourceType = "AWS::ApiGateway::UsagePlanKey" then
+                let usagePlanKeyId = resource.resourceId.Replace(":", "/")
+                resourceJson.Add("id", usagePlanKeyId)
+            elif resource.resourceType = routeTableAssociationType then
+                let routeTableAssociationId = resource.resourceId
+                let association =
+                    routeTables
+                    |> Seq.collect (fun table -> table.Associations)
+                    |> Seq.tryFind (fun association -> association.RouteTableAssociationId = routeTableAssociationId)
+
+                match association with
+                | Some association ->
+                    let importId = $"{association.SubnetId}/{association.RouteTableId}"
+                    resourceJson.Add("id", importId)
+                | _ ->
+                    resourceJson.Add("id", resource.resourceId)
+            else
+                resourceJson.Add("id", resource.resourceId)
+
             resourceJson.Add("name", resource.logicalId.Replace("-", "_"))
             resourcesJson.Add(resourceJson)
             importResourceIds.Add(resource.resourceId)
