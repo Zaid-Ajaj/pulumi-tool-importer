@@ -667,16 +667,6 @@ let getAwsCloudFormationResources (stack: AwsCloudFormationStack) = task {
                   resourceType = resource.ResourceType })
 
         let resourceTypes = Set [ for resource in cloudformationResources -> resource.resourceType ]
-
-        let! securityGroupRules = task {
-            if resourceTypes.Contains "AWS::EC2::SecurityGroup" then
-                let client = ec2Client stack.region
-                let! response = client.DescribeSecurityGroupRulesAsync(DescribeSecurityGroupRulesRequest())
-                return response.SecurityGroupRules
-            else
-                return ResizeArray()
-        }
-
         let cloudFormationLoadBalancerType = "AWS::ElasticLoadBalancingV2::LoadBalancer"
         let routeTableAssociationType = "AWS::EC2::SubnetRouteTableAssociation"
         let! loadBalancers = task {
@@ -697,6 +687,14 @@ let getAwsCloudFormationResources (stack: AwsCloudFormationStack) = task {
                 return ResizeArray()
         }
 
+        let vpcAttachments (vpcId: string) = task {
+            let client = ec2Client stack.region
+            let request = DescribeTransitGatewayVpcAttachmentsRequest()
+            request.Filters <- ResizeArray [ Filter(Name="vpc-id", Values=ResizeArray[ vpcId ]) ]
+            let! response = client.DescribeTransitGatewayVpcAttachmentsAsync(request)
+            return response.TransitGatewayVpcAttachments
+        }
+ 
         let pulumiImportJson = JObject()
         let resourcesJson = JArray()
         let errors = ResizeArray()
@@ -729,8 +727,21 @@ let getAwsCloudFormationResources (stack: AwsCloudFormationStack) = task {
                 let usagePlanKeyId = resource.resourceId.Replace(":", "/")
                 resourceJson.Add("id", usagePlanKeyId)
             elif resource.resourceType = "AWS::EC2::VPCGatewayAttachment" then
-                let attachmentId = resource.resourceId.Replace("|", ":")
-                resourceJson.Add("id", attachmentId)
+                match resource.resourceId.Split('|', ':') with
+                | [| _; vpcId |] ->
+                    let! attachments = vpcAttachments vpcId
+                    let attachment =
+                        attachments
+                        |> Seq.tryFind (fun attachment -> attachment.VpcId = vpcId)
+
+                    match attachment with
+                    | None ->
+                        resourceJson.Add("id", resource.resourceId)
+                    | Some attachment ->
+                        let attachmentId = $"{attachment.TransitGatewayId}:{attachment.VpcId}"
+                        resourceJson.Add("id", attachmentId)
+                | _ ->
+                    resourceJson.Add("id", resource.resourceId)
             elif resource.resourceType = routeTableAssociationType then
                 let routeTableAssociationId = resource.resourceId
                 let association =
@@ -750,20 +761,6 @@ let getAwsCloudFormationResources (stack: AwsCloudFormationStack) = task {
             resourceJson.Add("name", resource.logicalId.Replace("-", "_"))
             resourcesJson.Add(resourceJson)
             importResourceIds.Add(resource.resourceId)
-
-        for rule in securityGroupRules do
-            let alreadyIncluded = importResourceIds.Contains rule.SecurityGroupRuleId
-            let parentAdded = importResourceIds.Contains rule.GroupId
-            if not alreadyIncluded && parentAdded then
-                let resourceJson = JObject()
-                if rule.IsEgress then
-                    resourceJson.Add("type", "aws:vpc/securityGroupEgressRule:SecurityGroupEgressRule")
-                else
-                    resourceJson.Add("type", "aws:vpc/securityGroupIngressRule:SecurityGroupIngressRule")
-                resourceJson.Add("id", rule.SecurityGroupRuleId)
-                let ruleName = rule.SecurityGroupRuleId.Replace("-", "_")
-                resourceJson.Add("name", $"SecurityGroupRule_{ruleName}")
-                resourcesJson.Add(resourceJson)
 
         pulumiImportJson.Add("resources", resourcesJson)
         return Ok {
