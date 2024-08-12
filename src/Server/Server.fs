@@ -27,9 +27,9 @@ open Amazon.ElasticLoadBalancingV2
 open Amazon.ElasticLoadBalancingV2.Model
 open Amazon.Route53
 open Amazon.Route53.Model
-
 open Microsoft.Extensions.Logging
 open Amazon.EC2
+open AwsCloudFormationTypes
 
 let unsetDefaultRegion = "__default__"
 
@@ -559,6 +559,9 @@ let getAwsCloudFormationGeneratedTemplates(region: string) = task {
 let cloudFormationResourceToSkip = set [
     "AWS::CloudFormation::CustomResource"
     "AWS::CDK::Metadata"
+    "AWS::CloudFormation::WaitConditionHandle"
+    "AWS::CloudFormation::WaitCondition"
+    "AWS::AutoScaling::ScalingPolicy"
 ]
 
 let getJObject (key: string) (json: JObject) =
@@ -651,6 +654,42 @@ let getAwsCloudFormationGeneratedTemplate (request: AwsGeneratedTemplateRequest)
         return Error $"{errorType}: {error.Message}"
 }
 
+let isValidJson (json: string) =
+    try
+        let _ = JObject.Parse json
+        true
+    with
+    | _ -> false
+
+let templateBodyData (cloudformationTemplate: GetTemplateResponse) (resources: seq<AwsCloudFormationResource>) =
+    let data = Dictionary<string, Dictionary<string, string>>()
+    let bodyJson =
+        if isValidJson cloudformationTemplate.TemplateBody
+        then JObject.Parse cloudformationTemplate.TemplateBody
+        else Yaml.convertToJson cloudformationTemplate.TemplateBody
+
+    for resource in resources do
+        let properties = Dictionary<string, string>()
+        properties.Add("Id", resource.resourceId)
+        data.Add(resource.logicalId, properties)
+
+    let resourcesFromTemplate = getJObject "Resources" bodyJson
+    for property in resourcesFromTemplate.Properties() do
+        let resourceId = property.Name
+        let resource = getJObject resourceId resourcesFromTemplate
+        let properties = getJObject "Properties" resource
+        for property in properties.Properties() do
+            if property.Name.EndsWith "Id" || property.Name.EndsWith "Arn" then
+                let referenceProperty = getJObject property.Name properties
+                if referenceProperty.ContainsKey "Ref" then
+                    let referencedResourceLogicalId = referenceProperty["Ref"].ToObject<string>()
+                    if data.ContainsKey referencedResourceLogicalId then
+                        if data[referencedResourceLogicalId].ContainsKey "Id" then
+                            let id = data[referencedResourceLogicalId]["Id"]
+                            if not (data.ContainsKey resourceId) then data.Add(resourceId, Dictionary<string, string>())
+                            data[resourceId].Add(property.Name, id)
+    data, bodyJson
+
 let getAwsCloudFormationResources (stack: AwsCloudFormationStack) = task {
     try
         let client = cloudFormationClient stack.region
@@ -665,6 +704,8 @@ let getAwsCloudFormationResources (stack: AwsCloudFormationStack) = task {
                 { logicalId = resource.LogicalResourceId
                   resourceId = resource.PhysicalResourceId
                   resourceType = resource.ResourceType })
+
+        let resourceData, bodJson = templateBodyData stackTemplate cloudformationResources
 
         let resourceTypes = Set [ for resource in cloudformationResources -> resource.resourceType ]
         let cloudFormationLoadBalancerType = "AWS::ElasticLoadBalancingV2::LoadBalancer"
@@ -694,7 +735,7 @@ let getAwsCloudFormationResources (stack: AwsCloudFormationStack) = task {
             let! response = client.DescribeTransitGatewayVpcAttachmentsAsync(request)
             return response.TransitGatewayVpcAttachments
         }
- 
+
         let pulumiImportJson = JObject()
         let resourcesJson = JArray()
         let errors = ResizeArray()
@@ -703,64 +744,88 @@ let getAwsCloudFormationResources (stack: AwsCloudFormationStack) = task {
 
         for resource in cloudformationResources do
             let resourceJson = JObject()
-            if resource.resourceType = cloudFormationLoadBalancerType then
-                match loadBalancers.TryGetValue resource.resourceId with
-                | true, balancer when balancer.Type = LoadBalancerTypeEnum.Application ->
-                    resourceJson.Add("type", "aws:alb/loadBalancer:LoadBalancer")
-                | _ ->
-                    resourceJson.Add("type", "aws:elb/loadBalancer:LoadBalancer")
-            else
-                match AwsCloudFormation.mapToPulumi resource.resourceType with
-                | Some pulumiType ->
-                    resourceJson.Add("type", pulumiType)
-                | None ->
-                    resourceJson.Add("type", resource.resourceType)
-                    errors.Add $"CloudFormation resource '{resource.resourceType}' did not have a corresponding Pulumi type"
+            let remapSpec =
+                AwsCloudFormationTemplates.remapSpecifications
+                |> Seq.tryFind (fun pair -> pair.Key = resource.resourceType)
+                |> Option.map (fun pair -> pair.Value)
 
-            if resource.resourceType = "AWS::ApiGateway::Method" then
-                let methodId = resource.resourceId.Replace("|", "/")
-                resourceJson.Add("id", methodId)
-            elif resource.resourceType = "AWS::EC2::Route" then
-                let routeId = resource.resourceId.Replace("|", "_")
-                resourceJson.Add("id", routeId)
-            elif resource.resourceType = "AWS::ApiGateway::UsagePlanKey" then
-                let usagePlanKeyId = resource.resourceId.Replace(":", "/")
-                resourceJson.Add("id", usagePlanKeyId)
-            elif resource.resourceType = "AWS::EC2::VPCGatewayAttachment" then
-                match resource.resourceId.Split('|', ':') with
-                | [| _; vpcId |] ->
-                    let! attachments = vpcAttachments vpcId
-                    let attachment =
-                        attachments
-                        |> Seq.tryFind (fun attachment -> attachment.VpcId = vpcId)
+            let hasRemapData (spec: RemapSpecification) =
+                spec.importIdentityParts
+                |> Seq.forall (fun part ->
+                    resourceData.ContainsKey resource.logicalId
+                    && resourceData[resource.logicalId].ContainsKey part)
 
-                    match attachment with
+            match remapSpec with
+            | Some spec when hasRemapData spec ->
+                let data = resourceData[resource.logicalId]
+                let importId =
+                    spec.importIdentityParts
+                    |> Seq.map (fun partKey -> data[partKey])
+                    |> String.concat spec.delimiter
+
+                resourceJson.Add("type", spec.pulumiType)
+                resourceJson.Add("name", resource.logicalId.Replace("-", "_"))
+                resourceJson.Add("id", importId)
+            | _ ->
+                if resource.resourceType = cloudFormationLoadBalancerType then
+                    match loadBalancers.TryGetValue resource.resourceId with
+                    | true, balancer when balancer.Type = LoadBalancerTypeEnum.Application ->
+                        resourceJson.Add("type", "aws:alb/loadBalancer:LoadBalancer")
+                    | _ ->
+                        resourceJson.Add("type", "aws:elb/loadBalancer:LoadBalancer")
+                else
+                    match AwsCloudFormation.mapToPulumi resource.resourceType with
+                    | Some pulumiType ->
+                        resourceJson.Add("type", pulumiType)
                     | None ->
+                        resourceJson.Add("type", resource.resourceType)
+                        errors.Add $"CloudFormation resource '{resource.resourceType}' did not have a corresponding Pulumi type"
+
+                if resource.resourceType = "AWS::ApiGateway::Method" then
+                    let methodId = resource.resourceId.Replace("|", "/")
+                    resourceJson.Add("id", methodId)
+                elif resource.resourceType = "AWS::EC2::Route" then
+                    let routeId = resource.resourceId.Replace("|", "_")
+                    resourceJson.Add("id", routeId)
+                elif resource.resourceType = "AWS::ApiGateway::UsagePlanKey" then
+                    let usagePlanKeyId = resource.resourceId.Replace(":", "/")
+                    resourceJson.Add("id", usagePlanKeyId)
+                elif resource.resourceType = "AWS::EC2::VPCGatewayAttachment" then
+                    match resource.resourceId.Split('|', ':') with
+                    | [| _; vpcId |] ->
+                        let! attachments = vpcAttachments vpcId
+                        let attachment =
+                            attachments
+                            |> Seq.tryFind (fun attachment -> attachment.VpcId = vpcId)
+
+                        match attachment with
+                        | None ->
+                            resourceJson.Add("id", resource.resourceId)
+                        | Some attachment ->
+                            let attachmentId = $"{attachment.TransitGatewayId}:{attachment.VpcId}"
+                            resourceJson.Add("id", attachmentId)
+                    | _ ->
                         resourceJson.Add("id", resource.resourceId)
-                    | Some attachment ->
-                        let attachmentId = $"{attachment.TransitGatewayId}:{attachment.VpcId}"
-                        resourceJson.Add("id", attachmentId)
-                | _ ->
-                    resourceJson.Add("id", resource.resourceId)
-            elif resource.resourceType = routeTableAssociationType then
-                let routeTableAssociationId = resource.resourceId
-                let association =
-                    routeTables
-                    |> Seq.collect (fun table -> table.Associations)
-                    |> Seq.tryFind (fun association -> association.RouteTableAssociationId = routeTableAssociationId)
+                elif resource.resourceType = routeTableAssociationType then
+                    let routeTableAssociationId = resource.resourceId
+                    let association =
+                        routeTables
+                        |> Seq.collect (fun table -> table.Associations)
+                        |> Seq.tryFind (fun association -> association.RouteTableAssociationId = routeTableAssociationId)
 
-                match association with
-                | Some association ->
-                    let importId = $"{association.SubnetId}/{association.RouteTableId}"
-                    resourceJson.Add("id", importId)
-                | _ ->
+                    match association with
+                    | Some association ->
+                        let importId = $"{association.SubnetId}/{association.RouteTableId}"
+                        resourceJson.Add("id", importId)
+                    | _ ->
+                        resourceJson.Add("id", resource.resourceId)
+                else
                     resourceJson.Add("id", resource.resourceId)
-            else
-                resourceJson.Add("id", resource.resourceId)
 
-            resourceJson.Add("name", resource.logicalId.Replace("-", "_"))
+                resourceJson.Add("name", resource.logicalId.Replace("-", "_"))
+
+                importResourceIds.Add(resource.resourceId)
             resourcesJson.Add(resourceJson)
-            importResourceIds.Add(resource.resourceId)
 
         pulumiImportJson.Add("resources", resourcesJson)
         return Ok {
@@ -768,7 +833,8 @@ let getAwsCloudFormationResources (stack: AwsCloudFormationStack) = task {
             pulumiImportJson = pulumiImportJson.ToString(Formatting.Indented)
             warnings = []
             errors = errors |> Seq.distinct |> Seq.toList
-            templateBody = stackTemplate.TemplateBody
+            templateBody = bodJson.ToString(Formatting.Indented)
+            resourceDataJson = (JObject.FromObject resourceData).ToString(Formatting.Indented)
         }
     with
     | error ->
@@ -819,13 +885,6 @@ let tempDirectory (f: string -> 't) =
         f info.FullName
     finally
         Directory.Delete(dir, true)
-
-let isValidJson (json: string) =
-    try
-        let _ = JObject.Parse json
-        true
-    with
-    | _ -> false
 
 let invalidTypesInImportJson (json: string) =
     let parsedJson = JObject.Parse json

@@ -1,12 +1,8 @@
 module AwsCloudFormationGeneratedTemplates
 
-let private (=>) key value = key, value
+open AwsCloudFormationTypes
 
-type RemapSpecification = {
-    pulumiType: string
-    delimiter: string
-    importIdentityParts: string list
-}
+let private (=>) key value = key, value
 
 let remapSpecifications = Map.ofList [
     "AWS::EC2::SubnetRouteTableAssociation" => {

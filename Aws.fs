@@ -220,6 +220,7 @@ let cloudformationMappings = function
 | "Route53Resolver", "ResolverRule" -> "route53", "ResolverRule"
 | "Route53Resolver", "ResolverRuleAssociation" -> "route53", "ResolverRuleAssociation"
 | "CertificateManager", "Certificate" -> "acm", "Certificate"
+| "CloudWatch", "Alarm" -> "cloudwatch", "MetricAlarm"
 | moduleName, resourceType -> moduleName, resourceType
 
 let (|ModuleName|_|) (input: string) =

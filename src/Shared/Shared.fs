@@ -69,6 +69,7 @@ type AwsCloudFormationResourcesResponse = {
     warnings: string list
     errors: string list
     templateBody: string
+    resourceDataJson: string
 }
 
 type AzureResource = {

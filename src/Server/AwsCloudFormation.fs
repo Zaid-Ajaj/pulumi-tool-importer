@@ -204,7 +204,7 @@ let mapToPulumi = function
 | "AWS::CloudTrail::EventDataStore" -> Some "aws:cloudtrail/eventDataStore:EventDataStore"
 // | "AWS::CloudTrail::ResourcePolicy" -> Error "not found"
 | "AWS::CloudTrail::Trail" -> Some "aws:cloudtrail/trail:Trail"
-// | "AWS::CloudWatch::Alarm" -> Error "not found"
+| "AWS::CloudWatch::Alarm" -> Some "aws:cloudwatch/metricAlarm:MetricAlarm"
 // | "AWS::CloudWatch::AnomalyDetector" -> Error "not found"
 | "AWS::CloudWatch::CompositeAlarm" -> Some "aws:cloudwatch/compositeAlarm:CompositeAlarm"
 | "AWS::CloudWatch::Dashboard" -> Some "aws:cloudwatch/dashboard:Dashboard"
@@ -1287,4 +1287,4 @@ let mapToPulumi = function
 // | "Alexa::ASK::Skill" -> Error "not found"
 | _ -> None
 
-// Mapped number of types: 628 / 1279 (remaining: 651)
+// Mapped number of types: 629 / 1279 (remaining: 650)

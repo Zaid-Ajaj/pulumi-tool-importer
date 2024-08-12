@@ -407,6 +407,15 @@ let CloudFormationResourcesByStack stack =
                                 prop.className "is-active"
                         ]
 
+                        Html.li [
+                            prop.children [
+                                Html.a [ Html.span "Resource Data" ]
+                            ]
+                            prop.onClick (fun _ -> setTab "data")
+                            if tab = "data" then
+                                prop.className "is-active"
+                        ]
+
                         if not (List.isEmpty response.warnings) then
                             Html.li [
                                 prop.children [
@@ -454,6 +463,9 @@ let CloudFormationResourcesByStack stack =
                         Html.code response.pulumiImportJson
                     ]
                 ]
+
+            | "data" ->
+                Html.pre response.resourceDataJson
 
             | "template" ->
                 Html.pre response.templateBody
