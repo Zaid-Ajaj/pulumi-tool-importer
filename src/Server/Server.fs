@@ -728,12 +728,22 @@ let getAwsCloudFormationResources (stack: AwsCloudFormationStack) = task {
                 return ResizeArray()
         }
 
-        let vpcAttachments (vpcId: string) = task {
+        let! elasticIps = task {
+            if resourceTypes.Contains "AWS::EC2::EIP" then
+                let client = ec2Client stack.region
+                let request = DescribeAddressesRequest()
+                let! response = client.DescribeAddressesAsync(request)
+                return Map.ofList [ for address in response.Addresses -> address.PublicIp, address ]
+            else
+                return Map.empty
+        }
+
+        let internetGateways (vpcId: string) = task {
             let client = ec2Client stack.region
-            let request = DescribeTransitGatewayVpcAttachmentsRequest()
+            let request = DescribeInternetGatewaysRequest()
             request.Filters <- ResizeArray [ Filter(Name="vpc-id", Values=ResizeArray[ vpcId ]) ]
-            let! response = client.DescribeTransitGatewayVpcAttachmentsAsync(request)
-            return response.TransitGatewayVpcAttachments
+            let! response = client.DescribeInternetGatewaysAsync(request)
+            return response.InternetGateways
         }
 
         let pulumiImportJson = JObject()
@@ -790,20 +800,21 @@ let getAwsCloudFormationResources (stack: AwsCloudFormationStack) = task {
                 elif resource.resourceType = "AWS::ApiGateway::UsagePlanKey" then
                     let usagePlanKeyId = resource.resourceId.Replace(":", "/")
                     resourceJson.Add("id", usagePlanKeyId)
+                elif resource.resourceType = "AWS::EC2::EIP" then
+                    match elasticIps.TryGetValue resource.resourceId with
+                    | true, eip ->
+                        resourceJson.Add("id", eip.AllocationId)
+                    | _ ->
+                        resourceJson.Add("id", resource.resourceId)
                 elif resource.resourceType = "AWS::EC2::VPCGatewayAttachment" then
-                    match resource.resourceId.Split('|', ':') with
+                    match resource.resourceId.Split('|') with
                     | [| _; vpcId |] ->
-                        let! attachments = vpcAttachments vpcId
-                        let attachment =
-                            attachments
-                            |> Seq.tryFind (fun attachment -> attachment.VpcId = vpcId)
-
-                        match attachment with
+                        let! gateways = internetGateways vpcId
+                        match gateways |> Seq.tryHead with
+                        | Some gateway ->
+                            resourceJson.Add("id", $"{gateway.InternetGatewayId}:{vpcId}")
                         | None ->
                             resourceJson.Add("id", resource.resourceId)
-                        | Some attachment ->
-                            let attachmentId = $"{attachment.TransitGatewayId}:{attachment.VpcId}"
-                            resourceJson.Add("id", attachmentId)
                     | _ ->
                         resourceJson.Add("id", resource.resourceId)
                 elif resource.resourceType = routeTableAssociationType then

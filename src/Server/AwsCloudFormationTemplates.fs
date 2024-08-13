@@ -10,6 +10,18 @@ let remapSpecifications = Map.ofList [
         delimiter = "/"
     }
 
+    "AWS::ApiGateway::Stage" => {
+        pulumiType = "aws:apigateway/stage:Stage"
+        importIdentityParts = ["RestApiId"; "Id"]
+        delimiter = "/"
+    }
+
+    "AWS::ApiGateway::Deployment" => {
+        pulumiType = "aws:apigateway/deployment:Deployment"
+        importIdentityParts = ["RestApiId"; "Id"]
+        delimiter = "/"
+    }
+
     "AWS::ApiGateway::UsagePlanKey" => {
         pulumiType = "aws:apigateway/usagePlanKey:UsagePlanKey"
         importIdentityParts = ["UsagePlanId"; "KeyId"]
