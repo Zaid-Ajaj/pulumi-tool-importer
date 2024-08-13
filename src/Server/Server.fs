@@ -741,7 +741,7 @@ let getAwsCloudFormationResources (stack: AwsCloudFormationStack) = task {
         let internetGateways (vpcId: string) = task {
             let client = ec2Client stack.region
             let request = DescribeInternetGatewaysRequest()
-            request.Filters <- ResizeArray [ Filter(Name="vpc-id", Values=ResizeArray[ vpcId ]) ]
+            request.Filters <- ResizeArray [ Filter(Name="attachment.vpc-id", Values=ResizeArray[ vpcId ]) ]
             let! response = client.DescribeInternetGatewaysAsync(request)
             return response.InternetGateways
         }
