@@ -133,6 +133,11 @@ type SearchGoogleProjectRequest = {
     maxResult: int
 }
 
+type GoogleResourcesResponse = {
+    resources: GoogleResource list
+    pulumiImportJson: string
+}
+
 type ImporterApi = {
     getPulumiVersion : unit -> Async<string>
     awsCallerIdentity : unit -> Async<Result<AwsCallerIdentity, string>>
@@ -145,6 +150,6 @@ type ImporterApi = {
     getResourceGroups: unit -> Async<Result<string list, string>>
     getResourcesUnderResourceGroup: string -> Async<Result<AzureSearchResponse, string>>
     googleProjects: unit -> Async<Result<GoogleProject list, string>>
-    googleResourcesByProject: SearchGoogleProjectRequest -> Async<Result<GoogleResource list, string>>
+    googleResourcesByProject: SearchGoogleProjectRequest -> Async<Result<GoogleResourcesResponse, string>>
     importPreview: ImportPreviewRequest -> Async<Result<ImportPreviewResponse, string>>
 }

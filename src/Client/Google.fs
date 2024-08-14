@@ -49,6 +49,7 @@ If you are already logged in, choose one of the following options to import reso
 
 [<ReactComponent>]
 let SearchAssetInventory(project: GoogleProject) =
+    let tab, setTab = React.useState "resources"
     let queryInputRef = React.useInputRef()
     let selectedMaxResult, setMaxResult = React.useState "100"
     let response, setResponse = React.useState(Deferred.HasNotStartedYet)
@@ -155,18 +156,54 @@ for Cloud Asset Inventory. For example:
                 prop.text errorMessage
             ]
 
-        | Deferred.Resolved (Ok resources) ->
-            Html.p $"Found {resources.Length} resource(s)"
-            Html.ul [
-                for resource in resources ->
-                Html.li [
-                    Html.p $"Display Name: {resource.displayName}"
-                    Html.p $"Type: {resource.resourceType}"
-                    Html.p $"Full Name: {resource.name}"
-                    Html.p $"Location: {resource.location}"
-                    Html.p $"State: {resource.state}"
+        | Deferred.Resolved (Ok response) ->
+            React.fragment [
+                // tabs
+                // tabs
+            Html.div [
+                prop.className "tabs is-toggle"
+                prop.children [
+                    Html.ul [
+                        Html.li [
+                            prop.children [
+                                Html.a [ Html.span $"Resources ({List.length response.resources})" ]
+                            ]
+                            prop.onClick (fun _ -> setTab "resources")
+                            if tab = "resources" then
+                                prop.className "is-active"
+                        ]
+
+                        Html.li [
+                            prop.children [
+                                Html.a [ Html.span "Pulumi Import JSON" ]
+                            ]
+                            prop.onClick (fun _ -> setTab "import-json")
+                            if tab = "import-json" then
+                                prop.className "is-active"
+                        ]
+                    ]
                 ]
             ]
+
+            match tab with
+            | "resources" ->
+                Html.ul [
+                    for resource in response.resources ->
+                    Html.li [
+                        Html.p $"Display Name: {resource.displayName}"
+                        Html.p $"Type: {resource.resourceType}"
+                        Html.p $"Full Name: {resource.name}"
+                        Html.p $"Location: {resource.location}"
+                        Html.p $"State: {resource.state}"
+                    ]
+                ]
+
+            | "import-json" ->
+                Html.pre response.pulumiImportJson
+
+            | _ ->
+                Html.none
+        ]
     ]
 
 
