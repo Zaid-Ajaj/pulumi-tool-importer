@@ -3,7 +3,7 @@
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net6.0</TargetFramework>
-    <Version>0.33.0</Version>
+    <Version>0.34.0</Version>
     <AssemblyName>pulumi-tool-importer</AssemblyName>
   </PropertyGroup>
   <ItemGroup>
@@ -28,6 +28,8 @@
     <PackageReference Include="AWSSDK.CloudWatchEvents" Version="3.7.300.108" />
     <PackageReference Include="AWSSDK.EC2" Version="3.7.330.1" />
     <PackageReference Include="AWSSDK.ElasticLoadBalancingV2" Version="3.7.303.25" />
+    <PackageReference Include="AWSSDK.IdentityManagement" Version="3.7.401.3" />
+    <PackageReference Include="AWSSDK.Lambda" Version="3.7.400.5" />
     <PackageReference Include="AWSSDK.ResourceExplorer2" Version="3.7.302.56" />
     <PackageReference Include="AWSSDK.Route53" Version="3.7.302.85" />
     <PackageReference Include="AWSSDK.SecurityToken" Version="3.7.300.106" />

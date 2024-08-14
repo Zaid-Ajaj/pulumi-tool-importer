@@ -25,6 +25,8 @@ open Amazon.SecurityToken
 open Amazon.SecurityToken.Model
 open Amazon.ElasticLoadBalancingV2
 open Amazon.ElasticLoadBalancingV2.Model
+open Amazon.IdentityManagement
+open Amazon.IdentityManagement.Model
 open Amazon.Route53
 open Amazon.Route53.Model
 open Microsoft.Extensions.Logging
@@ -64,6 +66,12 @@ let ec2Client(region: string) =
         new AmazonEC2Client(awsEnvCredentials())
     else
         new AmazonEC2Client(awsEnvCredentials(), RegionEndpoint.GetBySystemName region)
+
+let iamClient (region: string) =
+    if region = unsetDefaultRegion then
+        new AmazonIdentityManagementServiceClient(awsEnvCredentials())
+    else
+        new AmazonIdentityManagementServiceClient(awsEnvCredentials(), RegionEndpoint.GetBySystemName region)
 
 let securityTokenServiceClient(region: string) =
     if region = unsetDefaultRegion then
@@ -661,6 +669,9 @@ let isValidJson (json: string) =
     with
     | _ -> false
 
+let [<Literal>] IdProperty = "Id"
+let [<Literal>] ArnProperty = "Arn"
+
 let templateBodyData (cloudformationTemplate: GetTemplateResponse) (resources: seq<AwsCloudFormationResource>) =
     let data = Dictionary<string, Dictionary<string, string>>()
     let bodyJson =
@@ -670,7 +681,7 @@ let templateBodyData (cloudformationTemplate: GetTemplateResponse) (resources: s
 
     for resource in resources do
         let properties = Dictionary<string, string>()
-        properties.Add("Id", resource.resourceId)
+        properties.Add(IdProperty, resource.resourceId)
         data.Add(resource.logicalId, properties)
 
     let resourcesFromTemplate = getJObject "Resources" bodyJson
@@ -679,15 +690,25 @@ let templateBodyData (cloudformationTemplate: GetTemplateResponse) (resources: s
         let resource = getJObject resourceId resourcesFromTemplate
         let properties = getJObject "Properties" resource
         for property in properties.Properties() do
-            if property.Name.EndsWith "Id" || property.Name.EndsWith "Arn" then
+            if property.Name.EndsWith IdProperty || property.Name.EndsWith ArnProperty || property.Name.EndsWith "Name" then
                 let referenceProperty = getJObject property.Name properties
                 if referenceProperty.ContainsKey "Ref" then
                     let referencedResourceLogicalId = referenceProperty["Ref"].ToObject<string>()
                     if data.ContainsKey referencedResourceLogicalId then
-                        if data[referencedResourceLogicalId].ContainsKey "Id" then
-                            let id = data[referencedResourceLogicalId]["Id"]
+                        if data[referencedResourceLogicalId].ContainsKey IdProperty then
+                            let id = data[referencedResourceLogicalId][IdProperty]
                             if not (data.ContainsKey resourceId) then data.Add(resourceId, Dictionary<string, string>())
                             data[resourceId].Add(property.Name, id)
+
+                if referenceProperty.ContainsKey "Fn::GetAtt" && referenceProperty["Fn::GetAtt"].Type = JTokenType.Array then
+                    let getAtt = referenceProperty["Fn::GetAtt"].ToObject<JArray>()
+                    if getAtt.Count = 2 && getAtt[0].Type = JTokenType.String then
+                        let referencedResourceLogicalId = getAtt[0].ToObject<string>()
+                        if data.ContainsKey referencedResourceLogicalId then
+                            if data[referencedResourceLogicalId].ContainsKey IdProperty then
+                                let id = data[referencedResourceLogicalId][IdProperty]
+                                if not (data.ContainsKey resourceId) then data.Add(resourceId, Dictionary<string, string>())
+                                data[resourceId].Add(property.Name, id)
     data, bodyJson
 
 let getAwsCloudFormationResources (stack: AwsCloudFormationStack) = task {
@@ -738,10 +759,21 @@ let getAwsCloudFormationResources (stack: AwsCloudFormationStack) = task {
                 return Map.empty
         }
 
+        let! iamPolicies = task {
+            if resourceTypes.Contains "AWS::IAM::Policy" then
+                let client = iamClient stack.region
+                let! response = client.ListPoliciesAsync(ListPoliciesRequest(MaxItems=1000))
+                return response.Policies
+            else
+                return ResizeArray []
+        }
+
         let internetGateways (vpcId: string) = task {
             let client = ec2Client stack.region
             let request = DescribeInternetGatewaysRequest()
-            request.Filters <- ResizeArray [ Filter(Name="attachment.vpc-id", Values=ResizeArray[ vpcId ]) ]
+            request.Filters <- ResizeArray [
+                Amazon.EC2.Model.Filter(Name="attachment.vpc-id", Values=ResizeArray[ vpcId ])
+            ]
             let! response = client.DescribeInternetGatewaysAsync(request)
             return response.InternetGateways
         }
@@ -804,6 +836,16 @@ let getAwsCloudFormationResources (stack: AwsCloudFormationStack) = task {
                     match elasticIps.TryGetValue resource.resourceId with
                     | true, eip ->
                         resourceJson.Add("id", eip.AllocationId)
+                    | _ ->
+                        resourceJson.Add("id", resource.resourceId)
+                elif resource.resourceType = "AWS::IAM::Policy" then
+                    let id = resource.resourceId
+                    let foundPolicy =
+                        iamPolicies
+                        |> Seq.tryFind (fun policy -> policy.PolicyId = id || policy.PolicyName = id)
+                    match foundPolicy with
+                    | Some policy ->
+                        resourceJson.Add("id", policy.Arn)
                     | _ ->
                         resourceJson.Add("id", resource.resourceId)
                 elif resource.resourceType = "AWS::EC2::VPCGatewayAttachment" then

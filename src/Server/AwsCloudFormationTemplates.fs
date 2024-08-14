@@ -33,4 +33,10 @@ let remapSpecifications = Map.ofList [
         importIdentityParts = ["SubnetId"; "RouteTableId"]
         delimiter = "/"
     }
+
+    "AWS::Lambda::Permission" => {
+        pulumiType = "aws:lambda/permission:Permission"
+        importIdentityParts = ["FunctionName"; "Id"]
+        delimiter = "/"
+    }
 ]
