@@ -525,7 +525,11 @@ let rec awsCloudFormationStacks (nextToken: string option) (region: string) = ta
 let getAwsCloudFormationStacks(region: string) = task {
     try
         let! stacks = awsCloudFormationStacks None region
-        let sorted = stacks |> Seq.sortBy (fun stack -> stack.StackName)
+        let sorted =
+            stacks
+            |> Seq.sortBy (fun stack -> stack.StackName)
+            |> Seq.filter (fun stack -> not (stack.StackStatus.Value.Contains "DELETE"))
+
         return Ok [
             for stack in sorted do
                 { stackId = stack.StackId
