@@ -41,7 +41,7 @@ let getRemappedImportProps = testList "getRemappedImportProps" [
         let resourceData = Dictionary<string, Dictionary<string, string>>()
         Expect.equal (getRemappedImportProps resource resourceData) None ""
     }
-    test "resourceType in remapSpec with complete resourceData returns Some(resourceType, name, importId)" {
+    test "ApiGateway Deployment remaps correctly with remapFromImportIdentityParts)" {
         let resource = {
             logicalId = "foo-foo"
             resourceId = "bar"
@@ -72,7 +72,6 @@ let getRemappedImportProps = testList "getRemappedImportProps" [
             "myService",
             "dev2-environment-ECSCluster-2JDFODYBOS1/dev2-dropbeacon-ECSServiceV2-zFfDnUyTGIgg"
         )) ""
-
     }
 ]
 

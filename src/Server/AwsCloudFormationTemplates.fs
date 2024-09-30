@@ -85,4 +85,11 @@ let remapSpecifications = Map.ofList [
         delimiter = "/"
         remapFunc = remapFromImportIdentityParts
     }
+
+    "AWS::S3::BucketPolicy" => {
+        pulumiType = "aws:s3/bucketPolicy:BucketPolicy"
+        importIdentityParts = ["Bucket"]
+        delimiter = "/"
+        remapFunc = remapFromImportIdentityParts
+    }
 ]
