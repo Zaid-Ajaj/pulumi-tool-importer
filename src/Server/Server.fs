@@ -803,6 +803,23 @@ let getImportIdsForVPCGatewayAttachments
     return data
 }
 
+let getRemappedImportProps 
+    (resource: AwsCloudFormationResource)
+    (resourceData: Dictionary<string, Dictionary<string,string>>)
+    : Option<string * string * string> =
+    // true if resourceData has entries under resource logical id for each
+    // part of the importIdentityParts        
+    
+    AwsCloudFormationTemplates.remapSpecifications
+    |> Seq.tryFind (fun pair -> pair.Key = resource.resourceType)
+    |> Option.map (fun pair -> pair.Value)
+    |> Option.filter (fun spec ->
+        spec.importIdentityParts
+        |> Seq.forall (fun part ->
+            resourceData.ContainsKey resource.logicalId
+            && resourceData[resource.logicalId].ContainsKey part))
+    |> Option.map (fun spec -> spec.remapFunc resource resourceData spec)
+
 let getPulumiImportJson 
     (cloudformationResources: seq<AwsCloudFormationResource>) 
     (loadBalancers: Map<string,LoadBalancer>)
@@ -819,35 +836,12 @@ let getPulumiImportJson
     // loop over filtered resources to construct pulumiImportJson
     for resource in cloudformationResources do
         let resourceJson = JObject()
-        // get Some remapSpec for resourceType from list of specs, or None 
-        let remapSpec =
-            AwsCloudFormationTemplates.remapSpecifications
-            |> Seq.tryFind (fun pair -> pair.Key = resource.resourceType)
-            |> Option.map (fun pair -> pair.Value)
 
-        // true if resourceData has entries under resource logical id for each
-        // part of the importIdentityParts
-        let hasRemapData (spec: RemapSpecification) =
-            spec.importIdentityParts
-            |> Seq.forall (fun part ->
-                resourceData.ContainsKey resource.logicalId
-                && resourceData[resource.logicalId].ContainsKey part)
-
-        match remapSpec with
-        // if there is a remapSpec and the resourceData has entries for all importIdentityParts...
-        | Some spec when hasRemapData spec ->
-            let data = resourceData[resource.logicalId]
-            // construct import id
-            let importId =
-                spec.importIdentityParts
-                |> Seq.map (fun partKey -> data[partKey])
-                |> String.concat spec.delimiter
-
-            // set type, name, and id on resourceJson
-            resourceJson.Add("type", spec.pulumiType)
-            resourceJson.Add("name", resource.logicalId.Replace("-", "_"))
+        match getRemappedImportProps resource resourceData with
+        | Some (resourceType, name, importId) -> 
+            resourceJson.Add("type", resourceType)
+            resourceJson.Add("name", name)
             resourceJson.Add("id", importId)
-        // else
         | _ ->
             // set the resource type
             if resource.resourceType = cloudFormationLoadBalancerType then
@@ -933,7 +927,7 @@ let getAwsCloudFormationResources (stack: AwsCloudFormationStack) = task {
         // get list of cloudformation stack resources from aws api
         let! response = client.ListStackResourcesAsync(ListStackResourcesRequest(StackName=stack.stackId))
 
-        let cloudformationResources =
+        let cloudformationResources : seq<AwsCloudFormationResource> =
             // start with list of resources
             response.StackResourceSummaries
             // filter out resources that should be skipped (bc only exist in cloudformation)
@@ -968,120 +962,6 @@ let getAwsCloudFormationResources (stack: AwsCloudFormationStack) = task {
         // get map of logical ids of vpc gateway attachments to import ids
         let! gatewayAttachmentImportIds = getImportIdsForVPCGatewayAttachments cloudformationResources stack.region
 
-        // initialize return data
-        // let pulumiImportJson = JObject()
-        // let resourcesJson = JArray()
-        // let errors = ResizeArray()
-
-        // let importResourceIds = ResizeArray()
-
-        // // loop over filtered resources to construct pulumiImportJson
-        // for resource in cloudformationResources do
-        //     let resourceJson = JObject()
-        //     // get Some remapSpec for resourceType from list of specs, or None 
-        //     let remapSpec =
-        //         AwsCloudFormationTemplates.remapSpecifications
-        //         |> Seq.tryFind (fun pair -> pair.Key = resource.resourceType)
-        //         |> Option.map (fun pair -> pair.Value)
-
-        //     // true if resourceData has entries under resource logical id for each
-        //     // part of the importIdentityParts
-        //     let hasRemapData (spec: RemapSpecification) =
-        //         spec.importIdentityParts
-        //         |> Seq.forall (fun part ->
-        //             resourceData.ContainsKey resource.logicalId
-        //             && resourceData[resource.logicalId].ContainsKey part)
-
-        //     match remapSpec with
-        //     // if there is a remapSpec and the resourceData has entries for all importIdentityParts...
-        //     | Some spec when hasRemapData spec ->
-        //         let data = resourceData[resource.logicalId]
-        //         // construct import id
-        //         let importId =
-        //             spec.importIdentityParts
-        //             |> Seq.map (fun partKey -> data[partKey])
-        //             |> String.concat spec.delimiter
-
-        //         // set type, name, and id on resourceJson
-        //         resourceJson.Add("type", spec.pulumiType)
-        //         resourceJson.Add("name", resource.logicalId.Replace("-", "_"))
-        //         resourceJson.Add("id", importId)
-        //     // else
-        //     | _ ->
-        //         // set the resource type
-        //         if resource.resourceType = cloudFormationLoadBalancerType then
-        //             // special handling for load balancer type
-        //             match loadBalancers.TryGetValue resource.resourceId with
-        //             | true, balancer when balancer.Type = LoadBalancerTypeEnum.Application ->
-        //                 resourceJson.Add("type", "aws:alb/loadBalancer:LoadBalancer")
-        //             | _ ->
-        //                 resourceJson.Add("type", "aws:elb/loadBalancer:LoadBalancer")
-        //         else
-        //             // set type as pulumi type from AwsCloudFormation.mapToPulumi (autogenerated from ?)
-        //             match AwsCloudFormation.mapToPulumi resource.resourceType with
-        //             | Some pulumiType ->
-        //                 resourceJson.Add("type", pulumiType)
-        //             | None ->
-        //                 resourceJson.Add("type", resource.resourceType)
-        //                 errors.Add $"CloudFormation resource '{resource.resourceType}' did not have a corresponding Pulumi type"
-                
-        //         // set the resource id
-        //         // special handling for certain resource types...
-        //         if resource.resourceType = "AWS::ApiGateway::Method" then
-        //             let methodId = resource.resourceId.Replace("|", "/")
-        //             resourceJson.Add("id", methodId)
-        //         elif resource.resourceType = "AWS::EC2::Route" then
-        //             let routeId = resource.resourceId.Replace("|", "_")
-        //             resourceJson.Add("id", routeId)
-        //         elif resource.resourceType = "AWS::ApiGateway::UsagePlanKey" then
-        //             let usagePlanKeyId = resource.resourceId.Replace(":", "/")
-        //             resourceJson.Add("id", usagePlanKeyId)
-        //         elif resource.resourceType = "AWS::EC2::EIP" then
-        //             match elasticIps.TryGetValue resource.resourceId with
-        //             | true, eip ->
-        //                 resourceJson.Add("id", eip.AllocationId)
-        //             | _ ->
-        //                 resourceJson.Add("id", resource.resourceId)
-        //         elif resource.resourceType = "AWS::IAM::Policy" then
-        //             let id = resource.resourceId
-        //             let foundPolicy =
-        //                 iamPolicies
-        //                 |> Seq.tryFind (fun policy -> policy.PolicyId = id || policy.PolicyName = id)
-        //             match foundPolicy with
-        //             | Some policy ->
-        //                 resourceJson.Add("id", policy.Arn)
-        //             | _ ->
-        //                 resourceJson.Add("id", resource.resourceId)
-        //         elif resource.resourceType = "AWS::EC2::VPCGatewayAttachment" then
-        //             match gatewayAttachmentImportIds.TryGetValue resource.logicalId with
-        //             | true, importId ->
-        //                 resourceJson.Add("id", importId)
-        //             |_ ->
-        //                 resourceJson.Add("id", resource.resourceId)
-        //         elif resource.resourceType = routeTableAssociationType then
-        //             let routeTableAssociationId = resource.resourceId
-        //             let association =
-        //                 routeTables
-        //                 |> Seq.collect (fun table -> table.Associations)
-        //                 |> Seq.tryFind (fun association -> association.RouteTableAssociationId = routeTableAssociationId)
-
-        //             match association with
-        //             | Some association ->
-        //                 let importId = $"{association.SubnetId}/{association.RouteTableId}"
-        //                 resourceJson.Add("id", importId)
-        //             | _ ->
-        //                 resourceJson.Add("id", resource.resourceId)
-        //         else
-        //             // base case: add the resourceId
-        //             resourceJson.Add("id", resource.resourceId)
-                
-        //         // add resource name as cfn resource logical id with underscores replaced with dashes
-        //         resourceJson.Add("name", resource.logicalId.Replace("-", "_"))
-
-        //         importResourceIds.Add(resource.resourceId)
-        //     resourcesJson.Add(resourceJson)
-
-        // pulumiImportJson.Add("resources", resourcesJson)
         let (pulumiImportJson, errors) = getPulumiImportJson 
                                             cloudformationResources
                                             loadBalancers

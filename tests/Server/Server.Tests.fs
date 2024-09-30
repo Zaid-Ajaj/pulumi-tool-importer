@@ -1,11 +1,13 @@
 module Server.Tests
 
+open System.Collections.Generic
+
 open Expecto
 
 open Shared
 open Server
 
-let server = testList "Server" [ 
+let syntax = testList "syntax" [ 
     test "A simple test" {
         let subject = "Hello World"
         Expect.equal subject "Hello World" "The strings should be equal"
@@ -17,15 +19,53 @@ let server = testList "Server" [
         Expect.equal (myMap.TryGetValue "forp") (false, null) "That's not how maps work"
         Expect.equal (myMap |> Map.tryFind "foo") (Some "bar") "That's not how maps work"
         Expect.equal myNestedMap.["nested"].["foo"] "bar" "That's not how maps work"
+    }    
+]
+
+let getRemappedImportProps = testList "getRemappedImportProps" [
+    test "resourceType not in remapSpec returns None" {
+        let resource = {
+                logicalId = "foo"
+                resourceId = "bar"
+                resourceType = "boink"
+        }
+        let resourceData = Dictionary<string, Dictionary<string, string>>()
+        Expect.equal (getRemappedImportProps resource resourceData) None ""
     }
-    
+    test "resourceType in remapSpec with missing resourceData returns None" {
+        let resource = {
+                logicalId = "foo"
+                resourceId = "bar"
+                resourceType = "AWS::ApiGateway::Deployment"
+        }
+        let resourceData = Dictionary<string, Dictionary<string, string>>()
+        Expect.equal (getRemappedImportProps resource resourceData) None ""
+    }
+    test "resourceType in remapSpec with complete resourceData returns Some(resourceType, name, importId)" {
+        let resource = {
+                logicalId = "foo-foo"
+                resourceId = "bar"
+                resourceType = "AWS::ApiGateway::Deployment"
+        }
+        // let resourceData = [("foo-foo", [("RestApiId", "fonce"); ("Id", "foo-foo")])] |> dict |> Dictionary
+        let resourceData = Dictionary<string, Dictionary<string,string>>()
+        resourceData.Add("foo-foo", Dictionary<string,string>())
+        resourceData["foo-foo"].Add("RestApiId", "fonce")
+        resourceData["foo-foo"].Add("Id", "foo-foo")
+        Expect.equal (getRemappedImportProps resource resourceData) (Some (
+            "aws:apigateway/deployment:Deployment",
+            "foo_foo",
+            "fonce/foo-foo"
+        )) ""
+    }
 ]
 
 let all =
     testList "All"
         [
             Shared.Tests.shared
-            server
+            syntax
+            getRemappedImportProps
         ]
 
 [<EntryPoint>]
