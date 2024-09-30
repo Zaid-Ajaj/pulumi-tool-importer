@@ -43,11 +43,10 @@ let getRemappedImportProps = testList "getRemappedImportProps" [
     }
     test "resourceType in remapSpec with complete resourceData returns Some(resourceType, name, importId)" {
         let resource = {
-                logicalId = "foo-foo"
-                resourceId = "bar"
-                resourceType = "AWS::ApiGateway::Deployment"
+            logicalId = "foo-foo"
+            resourceId = "bar"
+            resourceType = "AWS::ApiGateway::Deployment"
         }
-        // let resourceData = [("foo-foo", [("RestApiId", "fonce"); ("Id", "foo-foo")])] |> dict |> Dictionary
         let resourceData = Dictionary<string, Dictionary<string,string>>()
         resourceData.Add("foo-foo", Dictionary<string,string>())
         resourceData["foo-foo"].Add("RestApiId", "fonce")
@@ -57,6 +56,23 @@ let getRemappedImportProps = testList "getRemappedImportProps" [
             "foo_foo",
             "fonce/foo-foo"
         )) ""
+    }
+    test "ECS Service remaps using remapFromIdAsArn" {
+        let logicalId = "myService"
+        let resource = {
+            logicalId = logicalId
+            resourceId = "arn:aws:ecs:us-west-2:051081605780:service/dev2-environment-ECSCluster-2JDFODYBOS1/dev2-dropbeacon-ECSServiceV2-zFfDnUyTGIgg"
+            resourceType = "AWS::ECS::Service"
+        }
+        let resourceData = Dictionary<string, Dictionary<string,string>>()
+        resourceData.Add(logicalId, Dictionary<string,string>())
+        resourceData[logicalId].Add("Id", "arn:aws:ecs:us-west-2:051081605780:service/dev2-environment-ECSCluster-2JDFODYBOS1/dev2-dropbeacon-ECSServiceV2-zFfDnUyTGIgg")
+        Expect.equal (getRemappedImportProps resource resourceData) (Some (
+            "aws:ecs/service:Service",
+            "myService",
+            "dev2-environment-ECSCluster-2JDFODYBOS1/dev2-dropbeacon-ECSServiceV2-zFfDnUyTGIgg"
+        )) ""
+
     }
 ]
 

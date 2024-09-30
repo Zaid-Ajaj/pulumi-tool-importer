@@ -1,11 +1,14 @@
 module AwsCloudFormationTemplates
 
+open System
+
 open AwsCloudFormationTypes
 open System.Collections.Generic
 open Shared
 
 let private (=>) key value = key, value
 
+// for resources whose import id can be constructed from resource references in the template
 let remapFromImportIdentityParts = 
     (fun 
         (resource: AwsCloudFormationResource)
@@ -16,6 +19,19 @@ let remapFromImportIdentityParts =
             spec.importIdentityParts
             |> Seq.map (fun partKey -> data[partKey])
             |> String.concat spec.delimiter
+        let resourceType = spec.pulumiType
+        let name = resource.logicalId.Replace("-", "_")
+        resourceType, name, importId)
+
+// for resources whose physical id is the arn
+let remapFromIdAsArn =
+    (fun
+        (resource: AwsCloudFormationResource)
+        (resourceData: Dictionary<string, Dictionary<string,string>>)
+        (spec: customRemapSpecification) -> 
+        let data = resourceData[resource.logicalId]
+        let importIdParts = data["Id"].Split("/")[1..]
+        let importId = String.Join("/", importIdParts)
         let resourceType = spec.pulumiType
         let name = resource.logicalId.Replace("-", "_")
         resourceType, name, importId)
@@ -56,11 +72,12 @@ let remapSpecifications = Map.ofList [
         remapFunc = remapFromImportIdentityParts
     }
 
-    // "AWS::ECS::Service" => {
-    //     pulumiType = "aws:ecs/service:Service"
-    //     importIdentityParts = ["Cluster"; "Id"]
-    //     hasRemapData = hasRemapData
-    // }
+    "AWS::ECS::Service" => {
+        pulumiType = "aws:ecs/service:Service"
+        importIdentityParts = []
+        delimiter = "/"
+        remapFunc = remapFromIdAsArn
+    }
 
     "AWS::Lambda::Permission" => {
         pulumiType = "aws:lambda/permission:Permission"
