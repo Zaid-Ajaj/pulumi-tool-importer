@@ -13,7 +13,7 @@ let remapFromImportIdentityParts =
     (fun 
         (resource: AwsCloudFormationResource)
         (resourceData: Dictionary<string, Dictionary<string,string>>)
-        (spec: customRemapSpecification) -> 
+        (spec: CustomRemapSpecification) -> 
         let data = resourceData[resource.logicalId]
         let importId =
             spec.importIdentityParts
@@ -28,7 +28,7 @@ let remapFromIdAsArn =
     (fun
         (resource: AwsCloudFormationResource)
         (resourceData: Dictionary<string, Dictionary<string,string>>)
-        (spec: customRemapSpecification) -> 
+        (spec: CustomRemapSpecification) -> 
         let data = resourceData[resource.logicalId]
         let importIdParts = data["Id"].Split("/")[1..]
         let importId = String.Join("/", importIdParts)

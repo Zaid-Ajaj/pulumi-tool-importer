@@ -806,9 +806,7 @@ let getImportIdsForVPCGatewayAttachments
 let getRemappedImportProps 
     (resource: AwsCloudFormationResource)
     (resourceData: Dictionary<string, Dictionary<string,string>>)
-    : Option<string * string * string> =
-    // true if resourceData has entries under resource logical id for each
-    // part of the importIdentityParts        
+    : Option<string * string * string> =      
     
     AwsCloudFormationTemplates.remapSpecifications
     |> Seq.tryFind (fun pair -> pair.Key = resource.resourceType)
