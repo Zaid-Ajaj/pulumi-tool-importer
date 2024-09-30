@@ -87,6 +87,20 @@ let remapSpecifications = Map.ofList [
         remapFunc = remapFromImportIdentityParts
     }
 
+    "AWS::ApplicationAutoScaling::ScalingPolicy" => {
+        pulumiType = getPulumiType "AWS::ApplicationAutoScaling::ScalingPolicy"
+        importIdentityParts = ["ServiceNamespace"; "ResourceId"; "ScalableDimension"; "PolicyName"]
+        delimiter = "/"
+        remapFunc = remapFromImportIdentityParts
+    }
+
+    "AWS::ApplicationAutoScaling::ScalableTarget" => {
+        pulumiType = getPulumiType "AWS::ApplicationAutoScaling::ScalableTarget"
+        importIdentityParts = ["ServiceNamespace"; "ResourceId"; "ScalableDimension"]
+        delimiter = "/"
+        remapFunc = remapFromImportIdentityParts
+    }
+
     "AWS::EC2::SubnetRouteTableAssociation" => {
         pulumiType = "aws:ec2/routeTableAssociation:RouteTableAssociation"
         importIdentityParts = ["SubnetId"; "RouteTableId"]
