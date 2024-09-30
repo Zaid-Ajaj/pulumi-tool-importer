@@ -41,7 +41,7 @@ let getRemappedImportProps = testList "getRemappedImportProps" [
         let resourceData = Dictionary<string, Dictionary<string, string>>()
         Expect.equal (getRemappedImportProps resource resourceData) None ""
     }
-    test "ApiGateway Deployment remaps correctly with remapFromImportIdentityParts)" {
+    test "ApiGateway Deployment remaps with remapFromImportIdentityParts)" {
         let resource = {
             logicalId = "foo-foo"
             resourceId = "bar"
@@ -57,7 +57,7 @@ let getRemappedImportProps = testList "getRemappedImportProps" [
             "fonce/foo-foo"
         )) ""
     }
-    test "ECS Service remaps using remapFromIdAsArn" {
+    test "ECS Service remaps with remapFromIdAsArn" {
         let logicalId = "myService"
         let resource = {
             logicalId = logicalId
@@ -71,6 +71,24 @@ let getRemappedImportProps = testList "getRemappedImportProps" [
             "aws:ecs/service:Service",
             "myService",
             "dev2-environment-ECSCluster-2JDFODYBOS1/dev2-dropbeacon-ECSServiceV2-zFfDnUyTGIgg"
+        )) ""
+    }
+    test "Listener Certificate remaps with remapFromImportIdentityPartsListenerCertificate" {
+        let logicalId = "myListenerCertificate"
+        let resource = {
+            logicalId = logicalId
+            resourceId = "foo"
+            resourceType = "AWS::ElasticLoadBalancingV2::ListenerCertificate"
+        }
+        let resourceData = Dictionary<string, Dictionary<string,string>>()
+        resourceData.Add(logicalId, Dictionary<string,string>())
+        resourceData[logicalId].Add("Id", "foo")
+        resourceData[logicalId].Add("Certificates", "[{\"CertificateArn\":\"certArn\"}]")
+        resourceData[logicalId].Add("ListenerArn", "listenerArn")
+        Expect.equal (getRemappedImportProps resource resourceData) (Some (
+            "aws:lb/listenerCertificate:ListenerCertificate",
+            "myListenerCertificate",
+            "listenerArn_certArn"
         )) ""
     }
 ]

@@ -2,11 +2,18 @@ module AwsCloudFormationTemplates
 
 open System
 
+open Newtonsoft.Json.Linq
+
 open AwsCloudFormationTypes
 open System.Collections.Generic
 open Shared
 
 let private (=>) key value = key, value
+
+let getPulumiType (cfnType: string) =
+    match AwsCloudFormation.mapToPulumi cfnType with
+    | Some(pulumiType) -> pulumiType
+    | None -> ""
 
 // for resources whose import id can be constructed from resource references in the template
 let remapFromImportIdentityParts = 
@@ -29,10 +36,11 @@ let remapFromImportIdentityPartsListenerCertificate =
         (resourceData: Dictionary<string, Dictionary<string,string>>)
         (spec: CustomRemapSpecification) -> 
         let data = resourceData[resource.logicalId]
-        let importId =
-            spec.importIdentityParts
-            |> Seq.map (fun partKey -> data[partKey])
-            |> String.concat spec.delimiter
+        let listenerArn = data["ListenerArn"]
+        let certificates = JArray.Parse data["Certificates"]
+        let certificateObj = certificates[0]
+        let certificateArn = certificateObj["CertificateArn"].ToObject<string>()
+        let importId = String.concat spec.delimiter [listenerArn; certificateArn]
         let resourceType = spec.pulumiType
         let name = resource.logicalId.Replace("-", "_")
         resourceType, name, importId)
@@ -91,6 +99,13 @@ let remapSpecifications = Map.ofList [
         importIdentityParts = []
         delimiter = "/"
         remapFunc = remapFromIdAsArn
+    }
+
+    "AWS::ElasticLoadBalancingV2::ListenerCertificate" => {
+        pulumiType = getPulumiType "AWS::ElasticLoadBalancingV2::ListenerCertificate"
+        importIdentityParts = ["ListenerArn"; "Certificates"]
+        delimiter = "_"
+        remapFunc = remapFromImportIdentityPartsListenerCertificate
     }
 
     "AWS::Lambda::Permission" => {
