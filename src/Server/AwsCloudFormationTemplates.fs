@@ -16,47 +16,60 @@ let getPulumiType (cfnType: string) =
     | None -> ""
 
 // for resources whose import id can be constructed from resource references in the template
-let remapFromImportIdentityParts = 
-    (fun 
-        (resource: AwsCloudFormationResource)
-        (resourceData: Dictionary<string, Dictionary<string,string>>)
-        (spec: CustomRemapSpecification) -> 
-        let data = resourceData[resource.logicalId]
-        let importId =
-            spec.importIdentityParts
-            |> Seq.map (fun partKey -> data[partKey])
-            |> String.concat spec.delimiter
-        let resourceType = spec.pulumiType
-        let name = resource.logicalId.Replace("-", "_")
-        resourceType, name, importId)
+let remapFromImportIdentityParts
+    (resource: AwsCloudFormationResource)
+    (resourceData: Dictionary<string, Dictionary<string,string>>)
+    (spec: CustomRemapSpecification) 
+    : RemappedSpecResult = 
+    let data = resourceData[resource.logicalId]
+    let importId =
+        spec.importIdentityParts
+        |> Seq.map (fun partKey -> data[partKey])
+        |> String.concat spec.delimiter
+    let resourceType = spec.pulumiType
+    let logicalId = resource.logicalId.Replace("-", "_")
+    {
+        resourceType = resourceType
+        logicalId = logicalId
+        importId = importId
+    }
 
-let remapFromImportIdentityPartsListenerCertificate =
-    (fun 
-        (resource: AwsCloudFormationResource)
-        (resourceData: Dictionary<string, Dictionary<string,string>>)
-        (spec: CustomRemapSpecification) -> 
-        let data = resourceData[resource.logicalId]
-        let listenerArn = data["ListenerArn"]
-        let certificates = JArray.Parse data["Certificates"]
-        let certificateObj = certificates[0]
-        let certificateArn = certificateObj["CertificateArn"].ToObject<string>()
-        let importId = String.concat spec.delimiter [listenerArn; certificateArn]
-        let resourceType = spec.pulumiType
-        let name = resource.logicalId.Replace("-", "_")
-        resourceType, name, importId)
+let remapFromImportIdentityPartsListenerCertificate
+    (resource: AwsCloudFormationResource)
+    (resourceData: Dictionary<string, Dictionary<string,string>>)
+    (spec: CustomRemapSpecification) 
+    : RemappedSpecResult =
+    let data = resourceData[resource.logicalId]
+    let listenerArn = data["ListenerArn"]
+    let certificates = JArray.Parse data["Certificates"]
+    let certificateObj = certificates[0]
+    let certificateArn = certificateObj["CertificateArn"].ToObject<string>()
+    let importId = String.concat spec.delimiter [listenerArn; certificateArn]
+    
+    let resourceType = spec.pulumiType
+    let logicalId = resource.logicalId.Replace("-", "_")
+    {
+        resourceType = resourceType
+        logicalId = logicalId
+        importId = importId
+    }
 
 // for resources whose physical id is the arn
-let remapFromIdAsArn =
-    (fun
-        (resource: AwsCloudFormationResource)
-        (resourceData: Dictionary<string, Dictionary<string,string>>)
-        (spec: CustomRemapSpecification) -> 
-        let data = resourceData[resource.logicalId]
-        let importIdParts = data["Id"].Split("/")[1..]
-        let importId = String.Join("/", importIdParts)
-        let resourceType = spec.pulumiType
-        let name = resource.logicalId.Replace("-", "_")
-        resourceType, name, importId)
+let remapFromIdAsArn
+    (resource: AwsCloudFormationResource)
+    (resourceData: Dictionary<string, Dictionary<string,string>>)
+    (spec: CustomRemapSpecification) 
+    : RemappedSpecResult = 
+    let data = resourceData[resource.logicalId]
+    let importIdParts = data["Id"].Split("/")[1..]
+    let importId = String.Join("/", importIdParts)
+    let resourceType = spec.pulumiType
+    let logicalId = resource.logicalId.Replace("-", "_")
+    {
+        resourceType = resourceType
+        logicalId = logicalId
+        importId = importId
+    }
 
 let remapSpecifications = Map.ofList [
     "AWS::ApiGateway::Resource" => {
@@ -128,6 +141,13 @@ let remapSpecifications = Map.ofList [
         delimiter = "/"
         remapFunc = remapFromImportIdentityParts
     }
+
+    // "AWS::Route53::RecordSet" => {
+    //     pulumiType = getPulumiType "AWS::Route53::RecordSet"
+    //     importIdentityParts = ["HostedZoneId"; "Name"; "Type"; "SetIdentifier"]
+    //     delimiter = "_"
+    //     remapFunc = 
+    // }
 
     "AWS::S3::BucketPolicy" => {
         pulumiType = "aws:s3/bucketPolicy:BucketPolicy"

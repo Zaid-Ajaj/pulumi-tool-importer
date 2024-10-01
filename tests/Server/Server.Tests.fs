@@ -1,9 +1,10 @@
 module Server.Tests
 
 open System.Collections.Generic
-
+open Newtonsoft.Json.Linq
 open Expecto
 
+open AwsCloudFormationTypes
 open Shared
 open Server
 
@@ -20,6 +21,50 @@ let syntax = testList "syntax" [
         Expect.equal (myMap |> Map.tryFind "foo") (Some "bar") "That's not how maps work"
         Expect.equal myNestedMap.["nested"].["foo"] "bar" "That's not how maps work"
     }    
+]
+
+let getImportIdentityParts = testList "getImportIdentityParts" [
+    test "resourceType not in remapSpec returns None" {
+        Expect.equal (getImportIdentityParts "foo") None ""
+    }
+    test "resourceType in remapSpec returns Some(parts)" {
+        Expect.equal (getImportIdentityParts "AWS::S3::BucketPolicy") (Some ["Bucket"]) ""
+    }
+]
+
+let addImportIdentityParts = testList "addImportIdentityParts" [
+    test "adds defined string props to resourceData" {
+        let resourceId = "myResource"
+        let resourceType = "AWS::S3::BucketPolicy"
+        let properties = JObject()
+        properties.Add("Bucket", "bucketName")
+        let data = Dictionary<string, Dictionary<string,string>>()
+        addImportIdentityParts resourceId resourceType properties data
+        Expect.equal ((data["myResource"])["Bucket"]) "bucketName" ""
+    }
+    test "adds defined strings and json props as strings to resourceData" {
+        let resourceId = "myResource"
+        let resourceType = "AWS::ElasticLoadBalancingV2::ListenerCertificate"
+        
+        let properties = JObject()
+        properties.Add("ListenerArn", "listenerArn")
+        let certificate = JObject()
+        certificate.Add("CertificateArn", "certificateArn")
+        let certificates = JArray()
+        certificates.Add(certificate)
+        properties.Add("Certificates", certificates)
+
+        let data = Dictionary<string, Dictionary<string,string>>()
+        
+        addImportIdentityParts resourceId resourceType properties data
+        Expect.equal ((data["myResource"])["ListenerArn"]) "listenerArn" ""
+        let expected = "[
+  {
+    \"CertificateArn\": \"certificateArn\"
+  }
+]"
+        Expect.equal ((data["myResource"])["Certificates"]) expected ""
+    }
 ]
 
 let getRemappedImportProps = testList "getRemappedImportProps" [
@@ -51,11 +96,12 @@ let getRemappedImportProps = testList "getRemappedImportProps" [
         resourceData.Add("foo-foo", Dictionary<string,string>())
         resourceData["foo-foo"].Add("RestApiId", "fonce")
         resourceData["foo-foo"].Add("Id", "foo-foo")
-        Expect.equal (getRemappedImportProps resource resourceData) (Some (
-            "aws:apigateway/deployment:Deployment",
-            "foo_foo",
-            "fonce/foo-foo"
-        )) ""
+        let expectedResult : RemappedSpecResult = {
+            resourceType = "aws:apigateway/deployment:Deployment"
+            logicalId = "foo_foo"
+            importId = "fonce/foo-foo"
+        }
+        Expect.equal (getRemappedImportProps resource resourceData) (Some(expectedResult)) ""
     }
     test "ECS Service remaps with remapFromIdAsArn" {
         let logicalId = "myService"
@@ -67,11 +113,12 @@ let getRemappedImportProps = testList "getRemappedImportProps" [
         let resourceData = Dictionary<string, Dictionary<string,string>>()
         resourceData.Add(logicalId, Dictionary<string,string>())
         resourceData[logicalId].Add("Id", "arn:aws:ecs:us-west-2:051081605780:service/dev2-environment-ECSCluster-2JDFODYBOS1/dev2-dropbeacon-ECSServiceV2-zFfDnUyTGIgg")
-        Expect.equal (getRemappedImportProps resource resourceData) (Some (
-            "aws:ecs/service:Service",
-            "myService",
-            "dev2-environment-ECSCluster-2JDFODYBOS1/dev2-dropbeacon-ECSServiceV2-zFfDnUyTGIgg"
-        )) ""
+        let expectedResult : RemappedSpecResult = {
+            resourceType = "aws:ecs/service:Service"
+            logicalId = "myService"
+            importId = "dev2-environment-ECSCluster-2JDFODYBOS1/dev2-dropbeacon-ECSServiceV2-zFfDnUyTGIgg"
+        } 
+        Expect.equal (getRemappedImportProps resource resourceData) (Some(expectedResult)) ""
     }
     test "Listener Certificate remaps with remapFromImportIdentityPartsListenerCertificate" {
         let logicalId = "myListenerCertificate"
@@ -83,13 +130,19 @@ let getRemappedImportProps = testList "getRemappedImportProps" [
         let resourceData = Dictionary<string, Dictionary<string,string>>()
         resourceData.Add(logicalId, Dictionary<string,string>())
         resourceData[logicalId].Add("Id", "foo")
-        resourceData[logicalId].Add("Certificates", "[{\"CertificateArn\":\"certArn\"}]")
+        let certificates = "[
+  {
+    \"CertificateArn\": \"certificateArn\"
+  }
+]"
+        resourceData[logicalId].Add("Certificates", certificates)
         resourceData[logicalId].Add("ListenerArn", "listenerArn")
-        Expect.equal (getRemappedImportProps resource resourceData) (Some (
-            "aws:lb/listenerCertificate:ListenerCertificate",
-            "myListenerCertificate",
-            "listenerArn_certArn"
-        )) ""
+        let expectedResult : RemappedSpecResult = {
+            resourceType = "aws:lb/listenerCertificate:ListenerCertificate"
+            logicalId = "myListenerCertificate"
+            importId = "listenerArn_certificateArn"
+        } 
+        Expect.equal (getRemappedImportProps resource resourceData) (Some(expectedResult)) ""
     }
 ]
 
@@ -99,6 +152,8 @@ let all =
             Shared.Tests.shared
             syntax
             getRemappedImportProps
+            getImportIdentityParts
+            addImportIdentityParts
         ]
 
 [<EntryPoint>]

@@ -677,6 +677,28 @@ let isValidJson (json: string) =
 let [<Literal>] IdProperty = "Id"
 let [<Literal>] ArnProperty = "Arn"
 
+let getImportIdentityParts
+    (resourceType: string)
+    : Option<seq<string>> =      
+    match AwsCloudFormationTemplates.remapSpecifications.TryFind resourceType with
+    | Some(spec) -> Some spec.importIdentityParts
+    | _ -> None
+
+let addImportIdentityParts
+    (resourceId: string)
+    (resourceType: string)
+    (properties: JObject)
+    (data: Dictionary<string, Dictionary<string, string>>) =
+    let importIdentityParts = getImportIdentityParts resourceType
+    match importIdentityParts with
+    | Some(parts) ->
+        let definedImportIdentityParts = parts |> Seq.filter (fun part -> properties.ContainsKey part)
+        for part in definedImportIdentityParts do
+            if not (data.ContainsKey resourceId) then data.Add(resourceId, Dictionary<string, string>())
+            let prop = properties[part]
+            if not (data[resourceId].ContainsKey part) then data[resourceId].Add(part, prop.ToString())
+    | _ -> ()
+
 // returns resource dependency data and cfn template as JObject
 let templateBodyData (cloudformationTemplate: GetTemplateResponse) (resources: seq<AwsCloudFormationResource>) =
     let data = Dictionary<string, Dictionary<string, string>>()
@@ -698,11 +720,11 @@ let templateBodyData (cloudformationTemplate: GetTemplateResponse) (resources: s
     // TODO: since this loops over the template, instead of the filtered resource list,
     // will this function add entries for skipped resources to the return data?
     for property in resourcesFromTemplate.Properties() do
-        // resourceId is cfn logical id
+        // property.Name is cfn logical id
         let resourceId = property.Name
         let resource = getJObject resourceId resourcesFromTemplate
         let properties = getJObject "Properties" resource
-        // loop over Properties block within the Resource block
+
         for property in properties.Properties() do
             // if the property is a reference property...
             if property.Name.EndsWith IdProperty || property.Name.EndsWith ArnProperty || property.Name.EndsWith "Name" then
@@ -730,6 +752,8 @@ let templateBodyData (cloudformationTemplate: GetTemplateResponse) (resources: s
                                 // add map of ref property name to id of referenced resource to return data map under 
                                 // logical id referring resource
                                 data[resourceId].Add(property.Name, id)
+        // add importIdentityParts that have not already been added as reference properties
+        addImportIdentityParts (resourceId.ToString()) ((resource["Type"]).ToString()) properties data
     data, bodyJson
 
 let routeTableAssociationType = "AWS::EC2::SubnetRouteTableAssociation"
@@ -806,7 +830,7 @@ let getImportIdsForVPCGatewayAttachments
 let getRemappedImportProps 
     (resource: AwsCloudFormationResource)
     (resourceData: Dictionary<string, Dictionary<string,string>>)
-    : Option<string * string * string> =      
+    : Option<RemappedSpecResult> =      
     
     AwsCloudFormationTemplates.remapSpecifications
     |> Seq.tryFind (fun pair -> pair.Key = resource.resourceType)
@@ -836,10 +860,10 @@ let getPulumiImportJson
         let resourceJson = JObject()
 
         match getRemappedImportProps resource resourceData with
-        | Some (resourceType, name, importId) -> 
-            resourceJson.Add("type", resourceType)
-            resourceJson.Add("name", name)
-            resourceJson.Add("id", importId)
+        | Some (remappedSpecResult) -> 
+            resourceJson.Add("type", remappedSpecResult.resourceType)
+            resourceJson.Add("name", remappedSpecResult.logicalId)
+            resourceJson.Add("id", remappedSpecResult.importId)
         | _ ->
             // set the resource type
             if resource.resourceType = cloudFormationLoadBalancerType then
