@@ -14,6 +14,7 @@ type CustomRemapSpecification = {
     delimiter: string
     importIdentityParts: string list
     remapFunc: AwsCloudFormationResource -> Dictionary<string, Dictionary<string,string>> -> CustomRemapSpecification -> RemappedSpecResult
+    validatorFunc: AwsCloudFormationResource -> Dictionary<string, Dictionary<string,string>> -> CustomRemapSpecification -> bool
 }
 
 type RemapSpecification = {

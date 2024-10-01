@@ -835,11 +835,7 @@ let getRemappedImportProps
     AwsCloudFormationTemplates.remapSpecifications
     |> Seq.tryFind (fun pair -> pair.Key = resource.resourceType)
     |> Option.map (fun pair -> pair.Value)
-    |> Option.filter (fun spec ->
-        spec.importIdentityParts
-        |> Seq.forall (fun part ->
-            resourceData.ContainsKey resource.logicalId
-            && resourceData[resource.logicalId].ContainsKey part))
+    |> Option.filter (fun spec -> spec.validatorFunc resource resourceData spec)
     |> Option.map (fun spec -> spec.remapFunc resource resourceData spec)
 
 let getPulumiImportJson 

@@ -15,6 +15,36 @@ let getPulumiType (cfnType: string) =
     | Some(pulumiType) -> pulumiType
     | None -> ""
 
+let hasImportIdentityParts
+    (resource: AwsCloudFormationResource)
+    (resourceData: Dictionary<string, Dictionary<string,string>>)
+    (spec: CustomRemapSpecification) 
+    : bool =
+    spec.importIdentityParts
+    |> Seq.forall (fun part -> resourceData[resource.logicalId].ContainsKey part)
+
+let remapFromImportIdentityPartsValidator
+    (resource: AwsCloudFormationResource)
+    (resourceData: Dictionary<string, Dictionary<string,string>>)
+    (spec: CustomRemapSpecification) 
+    : bool =
+    resourceData.ContainsKey resource.logicalId
+    && hasImportIdentityParts resource resourceData spec
+
+let listenerCertificateValidator
+    (resource: AwsCloudFormationResource)
+    (resourceData: Dictionary<string, Dictionary<string,string>>)
+    (spec: CustomRemapSpecification)
+    : bool =
+    let hasFields = remapFromImportIdentityPartsValidator resource resourceData spec
+    let certificatesParses =
+        try
+            JArray.Parse ((resourceData[resource.logicalId])["Certificates"]) |> ignore
+            true
+        with
+            | ex -> false
+    hasFields && certificatesParses
+
 // for resources whose import id can be constructed from resource references in the template
 let remapFromImportIdentityParts
     (resource: AwsCloudFormationResource)
@@ -77,6 +107,7 @@ let remapSpecifications = Map.ofList [
         importIdentityParts = ["RestApiId"; "Id"]
         delimiter = "/"
         remapFunc = remapFromImportIdentityParts
+        validatorFunc = remapFromImportIdentityPartsValidator
     }
 
     "AWS::ApiGateway::Stage" => {
@@ -84,6 +115,7 @@ let remapSpecifications = Map.ofList [
         importIdentityParts = ["RestApiId"; "Id"]
         delimiter = "/"
         remapFunc = remapFromImportIdentityParts
+        validatorFunc = remapFromImportIdentityPartsValidator
     }
 
     "AWS::ApiGateway::Deployment" => {
@@ -91,6 +123,7 @@ let remapSpecifications = Map.ofList [
         importIdentityParts = ["RestApiId"; "Id"]
         delimiter = "/"
         remapFunc = remapFromImportIdentityParts
+        validatorFunc = remapFromImportIdentityPartsValidator
     }
 
     "AWS::ApiGateway::UsagePlanKey" => {
@@ -98,6 +131,7 @@ let remapSpecifications = Map.ofList [
         importIdentityParts = ["UsagePlanId"; "KeyId"]
         delimiter = "/"
         remapFunc = remapFromImportIdentityParts
+        validatorFunc = remapFromImportIdentityPartsValidator
     }
 
     "AWS::ApplicationAutoScaling::ScalingPolicy" => {
@@ -105,6 +139,7 @@ let remapSpecifications = Map.ofList [
         importIdentityParts = ["ServiceNamespace"; "ResourceId"; "ScalableDimension"; "PolicyName"]
         delimiter = "/"
         remapFunc = remapFromImportIdentityParts
+        validatorFunc = remapFromImportIdentityPartsValidator
     }
 
     "AWS::ApplicationAutoScaling::ScalableTarget" => {
@@ -112,6 +147,7 @@ let remapSpecifications = Map.ofList [
         importIdentityParts = ["ServiceNamespace"; "ResourceId"; "ScalableDimension"]
         delimiter = "/"
         remapFunc = remapFromImportIdentityParts
+        validatorFunc = remapFromImportIdentityPartsValidator
     }
 
     "AWS::EC2::SubnetRouteTableAssociation" => {
@@ -119,13 +155,15 @@ let remapSpecifications = Map.ofList [
         importIdentityParts = ["SubnetId"; "RouteTableId"]
         delimiter = "/"
         remapFunc = remapFromImportIdentityParts
+        validatorFunc = remapFromImportIdentityPartsValidator
     }
 
     "AWS::ECS::Service" => {
         pulumiType = "aws:ecs/service:Service"
-        importIdentityParts = []
+        importIdentityParts = ["Id"]
         delimiter = "/"
         remapFunc = remapFromIdAsArn
+        validatorFunc = remapFromImportIdentityPartsValidator
     }
 
     "AWS::ElasticLoadBalancingV2::ListenerCertificate" => {
@@ -133,6 +171,7 @@ let remapSpecifications = Map.ofList [
         importIdentityParts = ["ListenerArn"; "Certificates"]
         delimiter = "_"
         remapFunc = remapFromImportIdentityPartsListenerCertificate
+        validatorFunc = listenerCertificateValidator
     }
 
     "AWS::Lambda::Permission" => {
@@ -140,6 +179,7 @@ let remapSpecifications = Map.ofList [
         importIdentityParts = ["FunctionName"; "Id"]
         delimiter = "/"
         remapFunc = remapFromImportIdentityParts
+        validatorFunc = remapFromImportIdentityPartsValidator
     }
 
     // "AWS::Route53::RecordSet" => {
@@ -154,5 +194,6 @@ let remapSpecifications = Map.ofList [
         importIdentityParts = ["Bucket"]
         delimiter = "/"
         remapFunc = remapFromImportIdentityParts
+        validatorFunc = remapFromImportIdentityPartsValidator
     }
 ]
