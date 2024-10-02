@@ -31,20 +31,6 @@ let remapFromImportIdentityPartsValidator
     resourceData.ContainsKey resource.logicalId
     && hasImportIdentityParts resource resourceData spec
 
-let listenerCertificateValidator
-    (resource: AwsCloudFormationResource)
-    (resourceData: Dictionary<string, Dictionary<string,string>>)
-    (spec: CustomRemapSpecification)
-    : bool =
-    let hasFields = remapFromImportIdentityPartsValidator resource resourceData spec
-    let certificatesParses =
-        try
-            JArray.Parse ((resourceData[resource.logicalId])["Certificates"]) |> ignore
-            true
-        with
-            | ex -> false
-    hasFields && certificatesParses
-
 // for resources whose import id can be constructed from resource references in the template
 let remapFromImportIdentityParts
     (resource: AwsCloudFormationResource)
@@ -56,26 +42,6 @@ let remapFromImportIdentityParts
         spec.importIdentityParts
         |> Seq.map (fun partKey -> data[partKey])
         |> String.concat spec.delimiter
-    let resourceType = spec.pulumiType
-    let logicalId = resource.logicalId.Replace("-", "_")
-    {
-        resourceType = resourceType
-        logicalId = logicalId
-        importId = importId
-    }
-
-let remapFromImportIdentityPartsListenerCertificate
-    (resource: AwsCloudFormationResource)
-    (resourceData: Dictionary<string, Dictionary<string,string>>)
-    (spec: CustomRemapSpecification) 
-    : RemappedSpecResult =
-    let data = resourceData[resource.logicalId]
-    let listenerArn = data["ListenerArn"]
-    let certificates = JArray.Parse data["Certificates"]
-    let certificateObj = certificates[0]
-    let certificateArn = certificateObj["CertificateArn"].ToObject<string>()
-    let importId = String.concat spec.delimiter [listenerArn; certificateArn]
-    
     let resourceType = spec.pulumiType
     let logicalId = resource.logicalId.Replace("-", "_")
     {
@@ -115,7 +81,7 @@ let remapFromIdAsArn
     : RemappedSpecResult = 
     let data = resourceData[resource.logicalId]
     let importIdParts = data["Id"].Split("/")[1..]
-    let importId = String.Join("/", importIdParts)
+    let importId = String.Join(spec.delimiter, importIdParts)
     let resourceType = spec.pulumiType
     let logicalId = resource.logicalId.Replace("-", "_")
     {
@@ -193,8 +159,8 @@ let remapSpecifications = Map.ofList [
         pulumiType = getPulumiType "AWS::ElasticLoadBalancingV2::ListenerCertificate"
         importIdentityParts = ["ListenerArn"; "Certificates"]
         delimiter = "_"
-        remapFunc = remapFromImportIdentityPartsListenerCertificate
-        validatorFunc = listenerCertificateValidator
+        remapFunc = remapFromImportIdentityParts
+        validatorFunc = remapFromImportIdentityPartsValidator
     }
 
     "AWS::Lambda::Permission" => {

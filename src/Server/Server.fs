@@ -522,6 +522,27 @@ let rec awsCloudFormationStacks (nextToken: string option) (region: string) = ta
     return stacks
 }
 
+let rec stackExports (nextToken: string option) (region: string) : Task<ResizeArray<Export>> = task {
+    let exports = ResizeArray()
+    let client = cloudFormationClient region
+    let request = ListExportsRequest()
+    nextToken |> Option.iter (fun token -> request.NextToken <- token)
+    let! response = client.ListExportsAsync(request)
+    exports.AddRange response.Exports
+    if not (isNull response.NextToken) then
+        let! next = stackExports (Some response.NextToken) region
+        exports.AddRange next
+    
+    return exports
+}
+
+let getStackExports(region: string) = task {
+    let! exports = stackExports None region
+    return exports
+        |> Seq.map (fun export -> export.Name, export.Value)
+        |> Map.ofSeq
+}
+
 let getAwsCloudFormationStacks(region: string) = task {
     try
         let! stacks = awsCloudFormationStacks None region
@@ -711,11 +732,66 @@ let addImportIdentityParts
         for part in definedImportIdentityParts do
             if not (data.ContainsKey resourceId) then data.Add(resourceId, Dictionary<string, string>())
             let prop = properties[part]
-            if not (data[resourceId].ContainsKey part) then data[resourceId].Add(part, prop.ToString())
+            if not (data[resourceId].ContainsKey part) then 
+                data[resourceId].Add(part, prop.ToString())
     | _ -> ()
 
+let rec addReferencePropertiesToResourceData
+    (resourceId: string) 
+    (resource: JObject)
+    (resourceType: string)
+    (propName: string)
+    (data: Dictionary<string, Dictionary<string,string>>)
+    (stackExports: Map<string,string>)
+    (token: JToken) =
+    if token.Type = JTokenType.Array then
+        for token in token.Children() do
+            addReferencePropertiesToResourceData resourceId resource resourceType propName data stackExports token
+    if token.Type = JTokenType.Object then
+        let obj = token :?> JObject
+        for prop in obj.Properties() do
+            if prop.Value.Type = JTokenType.Object then
+                addReferencePropertiesToResourceData resourceId resource resourceType propName data stackExports prop.Value
+            printfn "%A" prop.Name
+        // if the reference is to another resource in the template...
+        if obj.ContainsKey "Ref" then
+            let referencedResourceLogicalId = obj["Ref"].ToObject<string>()
+            if data.ContainsKey referencedResourceLogicalId then
+                if data[referencedResourceLogicalId].ContainsKey IdProperty then
+                    let id = data[referencedResourceLogicalId][IdProperty]
+                    if not (data.ContainsKey resourceId) then data.Add(resourceId, Dictionary<string, string>())
+                    // add map of ref property name to id of referenced resource to return data map under 
+                    // logical id referring resource
+                    data[resourceId].Add(propName, id)
+
+        // if the reference is to an attribute of another resource in the template...
+        if obj.ContainsKey "Fn::GetAtt" && obj["Fn::GetAtt"].Type = JTokenType.Array then
+            let getAtt = obj["Fn::GetAtt"].ToObject<JArray>()
+            if getAtt.Count = 2 && getAtt[0].Type = JTokenType.String then
+                let referencedResourceLogicalId = getAtt[0].ToObject<string>()
+                if data.ContainsKey referencedResourceLogicalId then
+                    if data[referencedResourceLogicalId].ContainsKey IdProperty then
+                        let id = data[referencedResourceLogicalId][IdProperty]
+                        if not (data.ContainsKey resourceId) then data.Add(resourceId, Dictionary<string, string>())
+                        // add map of ref property name to id of referenced resource to return data map under 
+                        // logical id referring resource
+                        data[resourceId].Add(propName, id)
+        
+        // if the reference is to a stack export from another template...
+        if obj.ContainsKey "Fn::ImportValue" then
+            let referencedImportKey = obj["Fn::ImportValue"].ToObject<string>()
+            if stackExports.ContainsKey referencedImportKey then
+                let importValue = stackExports[referencedImportKey]
+                if not (data.ContainsKey resourceId) then data.Add(resourceId, Dictionary<string, string>())
+                // add map of ref property name to id of referenced resource to return data map under 
+                // logical id referring resource
+                data[resourceId].Add(propName, importValue)
+
 // returns resource dependency data and cfn template as JObject
-let templateBodyData (cloudformationTemplate: GetTemplateResponse) (resources: seq<AwsCloudFormationResource>) =
+let templateBodyData 
+    (cloudformationTemplate: GetTemplateResponse) 
+    (resources: seq<AwsCloudFormationResource>) 
+    (stackExports: Map<string,string>)=
     let data = Dictionary<string, Dictionary<string, string>>()
     // convert cloudformation template body to JObject
     let bodyJson =
@@ -742,32 +818,16 @@ let templateBodyData (cloudformationTemplate: GetTemplateResponse) (resources: s
         let properties = getJObject "Properties" resource
 
         for property in properties.Properties() do
-            // if the property is a reference property...
             if shouldCheckPropNameForReferenceProperty property.Name resourceType then
-                let referenceProperty = getJObject property.Name properties
-                // if the reference is to another resource in the template...
-                if referenceProperty.ContainsKey "Ref" then
-                    let referencedResourceLogicalId = referenceProperty["Ref"].ToObject<string>()
-                    if data.ContainsKey referencedResourceLogicalId then
-                        if data[referencedResourceLogicalId].ContainsKey IdProperty then
-                            let id = data[referencedResourceLogicalId][IdProperty]
-                            if not (data.ContainsKey resourceId) then data.Add(resourceId, Dictionary<string, string>())
-                            // add map of ref property name to id of referenced resource to return data map under 
-                            // logical id referring resource
-                            data[resourceId].Add(property.Name, id)
-
-                // if the reference is to an attribute of another resource in the template...
-                if referenceProperty.ContainsKey "Fn::GetAtt" && referenceProperty["Fn::GetAtt"].Type = JTokenType.Array then
-                    let getAtt = referenceProperty["Fn::GetAtt"].ToObject<JArray>()
-                    if getAtt.Count = 2 && getAtt[0].Type = JTokenType.String then
-                        let referencedResourceLogicalId = getAtt[0].ToObject<string>()
-                        if data.ContainsKey referencedResourceLogicalId then
-                            if data[referencedResourceLogicalId].ContainsKey IdProperty then
-                                let id = data[referencedResourceLogicalId][IdProperty]
-                                if not (data.ContainsKey resourceId) then data.Add(resourceId, Dictionary<string, string>())
-                                // add map of ref property name to id of referenced resource to return data map under 
-                                // logical id referring resource
-                                data[resourceId].Add(property.Name, id)
+                addReferencePropertiesToResourceData 
+                    resourceId
+                    resource
+                    resourceType
+                    property.Name
+                    data
+                    stackExports
+                    property.Value
+                
         // add importIdentityParts that have not already been added as reference properties
         addImportIdentityParts resourceId resourceType properties data
     data, bodyJson
@@ -973,9 +1033,12 @@ let getAwsCloudFormationResources (stack: AwsCloudFormationStack) = task {
                 { logicalId = resource.LogicalResourceId
                   resourceId = resource.PhysicalResourceId
                   resourceType = resource.ResourceType })
+        
+        // get all stack exports in order to resolve stack imports
+        let! stackExports = getStackExports stack.region
 
         // get resource dependency map and cfn template as JObject
-        let resourceData, bodyJson = templateBodyData stackTemplate cloudformationResources
+        let resourceData, bodyJson = templateBodyData stackTemplate cloudformationResources stackExports
 
         // get set of resource types
         let resourceTypes = Set [ for resource in cloudformationResources -> resource.resourceType ]
