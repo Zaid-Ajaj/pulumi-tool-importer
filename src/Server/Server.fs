@@ -684,6 +684,21 @@ let getImportIdentityParts
     | Some(spec) -> Some spec.importIdentityParts
     | _ -> None
 
+let shouldCheckPropNameForReferenceProperty
+    (propName: string)
+    (resourceType: string)
+    : bool =
+    match getImportIdentityParts resourceType with
+    | Some(importIdentityParts) -> 
+        propName.EndsWith IdProperty || 
+        propName.EndsWith ArnProperty || 
+        propName.EndsWith "Name" ||
+        Seq.contains propName importIdentityParts
+    | _ -> 
+        propName.EndsWith IdProperty || 
+        propName.EndsWith ArnProperty || 
+        propName.EndsWith "Name"
+
 let addImportIdentityParts
     (resourceId: string)
     (resourceType: string)
@@ -723,11 +738,12 @@ let templateBodyData (cloudformationTemplate: GetTemplateResponse) (resources: s
         // property.Name is cfn logical id
         let resourceId = property.Name
         let resource = getJObject resourceId resourcesFromTemplate
+        let resourceType = ((resource["Type"]).ToString())
         let properties = getJObject "Properties" resource
 
         for property in properties.Properties() do
             // if the property is a reference property...
-            if property.Name.EndsWith IdProperty || property.Name.EndsWith ArnProperty || property.Name.EndsWith "Name" then
+            if shouldCheckPropNameForReferenceProperty property.Name resourceType then
                 let referenceProperty = getJObject property.Name properties
                 // if the reference is to another resource in the template...
                 if referenceProperty.ContainsKey "Ref" then
@@ -753,7 +769,7 @@ let templateBodyData (cloudformationTemplate: GetTemplateResponse) (resources: s
                                 // logical id referring resource
                                 data[resourceId].Add(property.Name, id)
         // add importIdentityParts that have not already been added as reference properties
-        addImportIdentityParts (resourceId.ToString()) ((resource["Type"]).ToString()) properties data
+        addImportIdentityParts resourceId resourceType properties data
     data, bodyJson
 
 let routeTableAssociationType = "AWS::EC2::SubnetRouteTableAssociation"
