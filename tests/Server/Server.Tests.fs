@@ -144,6 +144,35 @@ let getRemappedImportProps = testList "getRemappedImportProps" [
         } 
         Expect.equal (getRemappedImportProps resource resourceData) (Some(expectedResult)) ""
     }
+    test "DNS record remaps with remapFromImportIdentityPartsDNSRecord" {
+        let logicalId = "myDNSRecord"
+        let resource = {
+            logicalId = logicalId
+            resourceId = "foo"
+            resourceType = "AWS::Route53::RecordSet"
+        }
+        let resourceData = Dictionary<string, Dictionary<string,string>>()
+        resourceData.Add(logicalId, Dictionary<string,string>())
+        resourceData[logicalId].Add("Id", "foo")
+        resourceData[logicalId].Add("HostedZoneId", "hostedZoneId")
+        resourceData[logicalId].Add("Name", "name")
+        resourceData[logicalId].Add("Type", "type")
+        let expectedResult : RemappedSpecResult = {
+            resourceType = "aws:route53/record:Record"
+            logicalId = "myDNSRecord"
+            importId = "hostedZoneId_name_type"
+        } 
+        Expect.equal (getRemappedImportProps resource resourceData) (Some(expectedResult)) ""
+
+        // also remaps correctly if SetIdentifier is present in data
+        resourceData[logicalId].Add("SetIdentifier", "setIdentifier")
+        let expectedResultWithSetId : RemappedSpecResult = {
+            resourceType = "aws:route53/record:Record"
+            logicalId = "myDNSRecord"
+            importId = "hostedZoneId_name_type_setIdentifier"
+        }
+        Expect.equal (getRemappedImportProps resource resourceData) (Some(expectedResultWithSetId)) ""
+    }
 ]
 
 let all =

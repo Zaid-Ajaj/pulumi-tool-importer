@@ -84,6 +84,29 @@ let remapFromImportIdentityPartsListenerCertificate
         importId = importId
     }
 
+let remapFromImportIdentityPartsDNSRecord
+    (resource: AwsCloudFormationResource)
+    (resourceData: Dictionary<string, Dictionary<string,string>>)
+    (spec: CustomRemapSpecification) 
+    : RemappedSpecResult = 
+    let data = resourceData[resource.logicalId]
+    let importId =
+        spec.importIdentityParts
+        |> Seq.map (fun partKey -> data[partKey])
+        |> String.concat spec.delimiter
+        |> (fun id -> 
+            if data.ContainsKey("SetIdentifier") then 
+                String.concat spec.delimiter [id; data["SetIdentifier"]]
+            else
+                id)
+    let resourceType = spec.pulumiType
+    let logicalId = resource.logicalId.Replace("-", "_")
+    {
+        resourceType = resourceType
+        logicalId = logicalId
+        importId = importId
+    }
+
 // for resources whose physical id is the arn
 let remapFromIdAsArn
     (resource: AwsCloudFormationResource)
@@ -182,12 +205,13 @@ let remapSpecifications = Map.ofList [
         validatorFunc = remapFromImportIdentityPartsValidator
     }
 
-    // "AWS::Route53::RecordSet" => {
-    //     pulumiType = getPulumiType "AWS::Route53::RecordSet"
-    //     importIdentityParts = ["HostedZoneId"; "Name"; "Type"; "SetIdentifier"]
-    //     delimiter = "_"
-    //     remapFunc = 
-    // }
+    "AWS::Route53::RecordSet" => {
+        pulumiType = getPulumiType "AWS::Route53::RecordSet"
+        importIdentityParts = ["HostedZoneId"; "Name"; "Type"]
+        delimiter = "_"
+        remapFunc = remapFromImportIdentityPartsDNSRecord
+        validatorFunc = remapFromImportIdentityPartsValidator
+    }
 
     "AWS::S3::BucketPolicy" => {
         pulumiType = "aws:s3/bucketPolicy:BucketPolicy"
