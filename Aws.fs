@@ -180,6 +180,7 @@ type CloudFormationConfig = {
 }
 
 let cloudformationMappings = function
+| "ApplicationAutoScaling", "ScalingPolicy" -> "appautoscaling", "policy"
 | "Amplify", "Domain" -> "Amplify", "DomainAssociation"
 | "AutoScaling", "AutoScalingGroup" -> "Autoscaling", "Group"
 | "SNS", "Topic" -> "sns", "TopicSubscription"

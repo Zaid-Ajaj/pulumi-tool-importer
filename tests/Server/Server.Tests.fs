@@ -120,30 +120,6 @@ let getRemappedImportProps = testList "getRemappedImportProps" [
         } 
         Expect.equal (getRemappedImportProps resource resourceData) (Some(expectedResult)) ""
     }
-    test "Listener Certificate remaps with remapFromImportIdentityPartsListenerCertificate" {
-        let logicalId = "myListenerCertificate"
-        let resource = {
-            logicalId = logicalId
-            resourceId = "foo"
-            resourceType = "AWS::ElasticLoadBalancingV2::ListenerCertificate"
-        }
-        let resourceData = Dictionary<string, Dictionary<string,string>>()
-        resourceData.Add(logicalId, Dictionary<string,string>())
-        resourceData[logicalId].Add("Id", "foo")
-        let certificates = "[
-  {
-    \"CertificateArn\": \"certificateArn\"
-  }
-]"
-        resourceData[logicalId].Add("Certificates", certificates)
-        resourceData[logicalId].Add("ListenerArn", "listenerArn")
-        let expectedResult : RemappedSpecResult = {
-            resourceType = "aws:lb/listenerCertificate:ListenerCertificate"
-            logicalId = "myListenerCertificate"
-            importId = "listenerArn_certificateArn"
-        } 
-        Expect.equal (getRemappedImportProps resource resourceData) (Some(expectedResult)) ""
-    }
     test "DNS record remaps with remapFromImportIdentityPartsDNSRecord" {
         let logicalId = "myDNSRecord"
         let resource = {

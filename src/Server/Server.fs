@@ -714,6 +714,7 @@ let shouldCheckPropNameForReferenceProperty
         propName.EndsWith IdProperty || 
         propName.EndsWith ArnProperty || 
         propName.EndsWith "Name" ||
+        propName.EndsWith "Identifier" ||
         Seq.contains propName importIdentityParts
     | _ -> 
         propName.EndsWith IdProperty || 
