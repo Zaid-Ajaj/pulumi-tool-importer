@@ -737,6 +737,55 @@ let addImportIdentityParts
                 data[resourceId].Add(part, prop.ToString())
     | _ -> ()
 
+let rec resolveTokenValue
+    (data: Dictionary<string, Dictionary<string,string>>)
+    (stackExports: Map<string,string>)
+    (token: JToken)
+    : string =
+    if token.Type = JTokenType.Object then // if the reference is to another resource in the template...
+        let obj = token.ToObject<JObject>()
+        if obj.ContainsKey "Ref" then
+            let referencedResourceLogicalId = obj["Ref"].ToObject<string>()
+            if data.ContainsKey referencedResourceLogicalId then
+                if data[referencedResourceLogicalId].ContainsKey IdProperty then
+                    data[referencedResourceLogicalId][IdProperty]
+                else ""
+            else ""
+
+        // if the reference is to an attribute of another resource in the template...
+        elif obj.ContainsKey "Fn::GetAtt" && obj["Fn::GetAtt"].Type = JTokenType.Array then
+            let getAtt = obj["Fn::GetAtt"].ToObject<JArray>()
+            if getAtt.Count = 2 && getAtt[0].Type = JTokenType.String then
+                let referencedResourceLogicalId = getAtt[0].ToObject<string>()
+                if data.ContainsKey referencedResourceLogicalId then
+                    if data[referencedResourceLogicalId].ContainsKey IdProperty then
+                        data[referencedResourceLogicalId][IdProperty]
+                    else ""
+                else ""
+            else ""
+
+        // if the reference is to a stack export from another template...
+        elif obj.ContainsKey "Fn::ImportValue" then
+            let referencedImportKey = obj["Fn::ImportValue"].ToObject<string>()
+            if stackExports.ContainsKey referencedImportKey then
+                stackExports[referencedImportKey]
+            else ""
+
+        elif obj.ContainsKey "Fn::Join" then
+            let join = obj["Fn::Join"].ToObject<JArray>()
+            if join.Count = 2 && join[0].Type = JTokenType.String && join[1].Type = JTokenType.Array then
+                let delimiter = join[0].ToObject<string>()
+                let joinParts = join[1].ToObject<JArray>()
+                let resolvedParts = joinParts 
+                                    |> Seq.map (fun part -> 
+                                        resolveTokenValue data stackExports)
+                String.Join(delimiter, resolvedParts)
+            else ""
+        else ""
+    elif token.Type = JTokenType.String then
+        token.ToObject<string>()
+    else ""
+
 let rec addReferencePropertiesToResourceData
     (resourceId: string) 
     (resource: JObject)
@@ -792,7 +841,8 @@ let rec addReferencePropertiesToResourceData
 let templateBodyData 
     (cloudformationTemplate: GetTemplateResponse) 
     (resources: seq<AwsCloudFormationResource>) 
-    (stackExports: Map<string,string>)=
+    (stackExports: Map<string,string>)
+    (region: string) =
     let data = Dictionary<string, Dictionary<string, string>>()
     // convert cloudformation template body to JObject
     let bodyJson =
@@ -805,6 +855,10 @@ let templateBodyData
         let properties = Dictionary<string, string>()
         properties.Add(IdProperty, resource.resourceId)
         data.Add(resource.logicalId, properties)
+
+    let regionProperty = Dictionary<string, string>()
+    regionProperty.Add(IdProperty, region)
+    data.Add("AWS::Region", regionProperty)
 
     // get Resources block from cfn template as JObject
     let resourcesFromTemplate = getJObject "Resources" bodyJson
@@ -1015,6 +1069,7 @@ let getPulumiImportJson
 
 let getAwsCloudFormationResources (stack: AwsCloudFormationStack) = task {
     try
+        printfn "%A" stack.stackName
         // instantiate cloudformation client
         let client = cloudFormationClient stack.region
         // get cloudformation stack template from aws api
@@ -1039,7 +1094,10 @@ let getAwsCloudFormationResources (stack: AwsCloudFormationStack) = task {
         let! stackExports = getStackExports stack.region
 
         // get resource dependency map and cfn template as JObject
-        let resourceData, bodyJson = templateBodyData stackTemplate cloudformationResources stackExports
+        let resourceData, bodyJson = templateBodyData stackTemplate cloudformationResources stackExports stack.region
+
+        // TEMP for demo
+        if stack.stackName = "dev2-dropbeacon" then resourceData["DNSRecord"].Add("SetIdentifier", "dropbeacon.dev2.healthsparq.com./us-west-2")
 
         // get set of resource types
         let resourceTypes = Set [ for resource in cloudformationResources -> resource.resourceType ]
