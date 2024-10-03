@@ -719,7 +719,8 @@ let shouldCheckPropNameForReferenceProperty
     | _ -> 
         propName.EndsWith IdProperty || 
         propName.EndsWith ArnProperty || 
-        propName.EndsWith "Name"
+        propName.EndsWith "Name" ||
+        propName.EndsWith "Identifier"
 
 let addImportIdentityParts
     (resourceId: string)
@@ -778,13 +779,34 @@ let rec resolveTokenValue
                 let joinParts = join[1].ToObject<JArray>()
                 let resolvedParts = joinParts 
                                     |> Seq.map (fun part -> 
-                                        resolveTokenValue data stackExports)
+                                        resolveTokenValue data stackExports part)
+                // printfn "%A\n" resolvedParts
                 String.Join(delimiter, resolvedParts)
             else ""
+
+        elif obj.Count = 1 then
+            let prop = obj.First.ToObject<JProperty>()
+            resolveTokenValue data stackExports prop.Value
         else ""
+
+    elif token.Type = JTokenType.Array then
+        let arr = token.ToObject<JArray>()
+        if arr.Count = 1 then
+            resolveTokenValue data stackExports arr[0]
+        else ""
+
     elif token.Type = JTokenType.String then
         token.ToObject<string>()
-    else ""
+        
+    else 
+        try 
+            printfn "%A" token.Type
+            token.ToString()
+        with
+        | ex -> 
+            printfn "%A" ex
+            ""
+        
 
 let rec addReferencePropertiesToResourceData
     (resourceId: string) 
@@ -874,14 +896,17 @@ let templateBodyData
 
         for property in properties.Properties() do
             if shouldCheckPropNameForReferenceProperty property.Name resourceType then
-                addReferencePropertiesToResourceData 
-                    resourceId
-                    resource
-                    resourceType
-                    property.Name
-                    data
-                    stackExports
-                    property.Value
+                let referenceValue = resolveTokenValue data stackExports property.Value
+                if not (data.ContainsKey resourceId) then data.Add(resourceId, Dictionary<string, string>())
+                data[resourceId].Add(property.Name, referenceValue)
+                // addReferencePropertiesToResourceData 
+                //     resourceId
+                //     resource
+                //     resourceType
+                //     property.Name
+                //     data
+                //     stackExports
+                //     property.Value
                 
         // add importIdentityParts that have not already been added as reference properties
         addImportIdentityParts resourceId resourceType properties data
@@ -1097,7 +1122,7 @@ let getAwsCloudFormationResources (stack: AwsCloudFormationStack) = task {
         let resourceData, bodyJson = templateBodyData stackTemplate cloudformationResources stackExports stack.region
 
         // TEMP for demo
-        if stack.stackName = "dev2-dropbeacon" then resourceData["DNSRecord"].Add("SetIdentifier", "dropbeacon.dev2.healthsparq.com./us-west-2")
+        // if stack.stackName = "dev2-dropbeacon" then resourceData["DNSRecord"].Add("SetIdentifier", "dropbeacon.dev2.healthsparq.com./us-west-2")
 
         // get set of resource types
         let resourceTypes = Set [ for resource in cloudformationResources -> resource.resourceType ]

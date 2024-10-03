@@ -108,7 +108,7 @@ let mapToPulumi = function
 // | "AWS::AppSync::SourceApiAssociation" -> Error "not found"
 // | "AWS::AppTest::TestCase" -> Error "not found"
 // | "AWS::ApplicationAutoScaling::ScalableTarget" -> Error "not found"
-// | "AWS::ApplicationAutoScaling::ScalingPolicy" -> Error "not found"
+| "AWS::ApplicationAutoScaling::ScalingPolicy" -> Some "aws:appautoscaling/policy:Policy"
 | "AWS::ApplicationInsights::Application" -> Some "aws:applicationinsights/application:Application"
 // | "AWS::ApplicationSignals::ServiceLevelObjective" -> Error "not found"
 // | "AWS::Athena::CapacityReservation" -> Error "not found"
@@ -1322,4 +1322,4 @@ let mapToPulumi = function
 // | "Alexa::ASK::Skill" -> Error "not found"
 | _ -> None
 
-// Mapped number of types: 631 / 1314 (remaining: 683)
+// Mapped number of types: 632 / 1314 (remaining: 682)

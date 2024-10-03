@@ -90,6 +90,40 @@ let remapFromIdAsArn
         importId = importId
     }
 
+let listenerCertificateValidator
+    (resource: AwsCloudFormationResource)
+    (resourceData: Dictionary<string, Dictionary<string,string>>)
+    (spec: CustomRemapSpecification)
+    : bool =
+    let hasFields = remapFromImportIdentityPartsValidator resource resourceData spec
+    let certificatesParses =
+        try
+            JArray.Parse ((resourceData[resource.logicalId])["Certificates"]) |> ignore
+            true
+        with
+            | ex -> false
+    hasFields && certificatesParses
+
+let remapFromImportIdentityPartsListenerCertificate
+    (resource: AwsCloudFormationResource)
+    (resourceData: Dictionary<string, Dictionary<string,string>>)
+    (spec: CustomRemapSpecification) 
+    : RemappedSpecResult =
+    let data = resourceData[resource.logicalId]
+    let listenerArn = data["ListenerArn"]
+    let certificates = JArray.Parse data["Certificates"]
+    let certificateObj = certificates[0]
+    let certificateArn = certificateObj["CertificateArn"].ToString()
+    let importId = String.concat spec.delimiter [listenerArn; certificateArn]
+    
+    let resourceType = spec.pulumiType
+    let logicalId = resource.logicalId.Replace("-", "_")
+    {
+        resourceType = resourceType
+        logicalId = logicalId
+        importId = importId
+    }
+
 let remapSpecifications = Map.ofList [
     "AWS::ApiGateway::Resource" => {
         pulumiType = "aws:apigateway/resource:Resource"

@@ -149,6 +149,83 @@ let getRemappedImportProps = testList "getRemappedImportProps" [
         }
         Expect.equal (getRemappedImportProps resource resourceData) (Some(expectedResultWithSetId)) ""
     }
+    test "Listener Certificate remaps with remapFromImportIdentityPartsListenerCertificate" {
+        let logicalId = "myListenerCertificate"
+        let resource = {
+            logicalId = logicalId
+            resourceId = "foo"
+            resourceType = "AWS::ElasticLoadBalancingV2::ListenerCertificate"
+        }
+        let resourceData = Dictionary<string, Dictionary<string,string>>()
+        resourceData.Add(logicalId, Dictionary<string,string>())
+        resourceData[logicalId].Add("Id", "foo")
+        let certificates = "[
+  {
+    \"CertificateArn\": \"certificateArn\"
+  }
+]"
+        resourceData[logicalId].Add("Certificates", certificates)
+        resourceData[logicalId].Add("ListenerArn", "listenerArn")
+        let expectedResult : RemappedSpecResult = {
+            resourceType = "aws:lb/listenerCertificate:ListenerCertificate"
+            logicalId = "myListenerCertificate"
+            importId = "listenerArn_certificateArn"
+        } 
+        Expect.equal (getRemappedImportProps resource resourceData) (Some(expectedResult)) ""
+    }
+]
+
+let resolveTokenValue = testList "resolveTokenValue" [
+    test "resolves JTokenType.String" {
+        let data = Dictionary<string, Dictionary<string,string>>()
+        let stackExports = Map.ofList []
+        let token = JToken.FromObject("testString")
+        Expect.equal (resolveTokenValue data stackExports token) "testString" ""
+    }
+    test "resolves Join of string and ref" {
+        let data = Dictionary<string, Dictionary<string,string>>()
+        data.Add("AWS::Region", Dictionary<string,string>())
+        data["AWS::Region"].Add("Id","us-west-2")
+        let stackExports = Map.ofList []
+        let jsonString = "{
+          \"Fn::Join\": [
+            \"/\",
+            [
+              \"dropbeacon.dev2.healthsparq.com.\",
+              {
+                \"Ref\": \"AWS::Region\"
+              }
+            ]
+          ]
+        }"
+        let token = JObject.Parse(jsonString)
+        Expect.equal (resolveTokenValue data stackExports token) "dropbeacon.dev2.healthsparq.com./us-west-2" ""
+    }
+    test "resolves Join of string, import, and getatt" {
+        let data = Dictionary<string, Dictionary<string,string>>()
+        data.Add("resourceLogicalId", Dictionary<string,string>())
+        data["resourceLogicalId"].Add("Id","resourcePhysicalId")
+        let stackExports = Map.ofList ["importKey","importValue"]
+        let jsonString = "{
+          \"Fn::Join\": [
+            \"/\",
+            [
+              \"service\",
+              {
+                \"Fn::ImportValue\": \"importKey\"
+              },
+              {
+                \"Fn::GetAtt\": [
+                    \"resourceLogicalId\",
+                    \"Name\"
+                ]
+              }
+            ]
+          ]
+        }"
+        let token = JObject.Parse(jsonString)
+        Expect.equal (resolveTokenValue data stackExports token) "service/importValue/resourcePhysicalId" ""
+    }
 ]
 
 let all =
@@ -159,6 +236,7 @@ let all =
             getRemappedImportProps
             getImportIdentityParts
             addImportIdentityParts
+            resolveTokenValue
         ]
 
 [<EntryPoint>]
