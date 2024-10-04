@@ -713,7 +713,9 @@ let shouldCheckPropNameForReferenceProperty
         propName.EndsWith IdProperty || 
         propName.EndsWith ArnProperty || 
         propName.EndsWith "Name" ||
-        propName.EndsWith "Identifier"
+        propName.EndsWith "Identifier" ||
+        propName.EndsWith "Namespace" ||
+        propName.EndsWith "Dimension"
     match getImportIdentityParts resourceType with
     | Some(importIdentityParts) -> 
         hasIdentifierSuffix || Seq.contains propName importIdentityParts

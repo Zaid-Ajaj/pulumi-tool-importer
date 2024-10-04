@@ -90,32 +90,49 @@ let remapFromIdAsArn
         importId = importId
     }
 
-let listenerCertificateValidator
-    (resource: AwsCloudFormationResource)
-    (resourceData: Dictionary<string, Dictionary<string,string>>)
-    (spec: CustomRemapSpecification)
-    : bool =
-    let hasFields = remapFromImportIdentityPartsValidator resource resourceData spec
-    let certificatesParses =
-        try
-            JArray.Parse ((resourceData[resource.logicalId])["Certificates"]) |> ignore
-            true
-        with
-            | ex -> false
-    hasFields && certificatesParses
-
-let remapFromImportIdentityPartsListenerCertificate
+let remapFromImportIdentityPartsValidatorAppScalingPolicy
     (resource: AwsCloudFormationResource)
     (resourceData: Dictionary<string, Dictionary<string,string>>)
     (spec: CustomRemapSpecification) 
-    : RemappedSpecResult =
+    : bool =
+    resourceData.ContainsKey resource.logicalId
+    && hasImportIdentityParts resource resourceData spec
+    && ((resourceData[resource.logicalId])["ScalingTargetId"]).Length = 3
+
+let remapAppScalingPolicy
+    (resource: AwsCloudFormationResource)
+    (resourceData: Dictionary<string, Dictionary<string,string>>)
+    (spec: CustomRemapSpecification) 
+    : RemappedSpecResult = 
     let data = resourceData[resource.logicalId]
-    let listenerArn = data["ListenerArn"]
-    let certificates = JArray.Parse data["Certificates"]
-    let certificateObj = certificates[0]
-    let certificateArn = certificateObj["CertificateArn"].ToString()
-    let importId = String.concat spec.delimiter [listenerArn; certificateArn]
-    
+    let scalingTargetIdParts = data["ScalingTargetId"].Split("|")
+    let importId = 
+        if scalingTargetIdParts.Length = 3 then
+            [scalingTargetIdParts[2]; scalingTargetIdParts[0]; scalingTargetIdParts[1]; data["PolicyName"]]
+            |> String.concat spec.delimiter
+        else ""
+                
+    let resourceType = spec.pulumiType
+    let logicalId = resource.logicalId.Replace("-", "_")
+    {
+        resourceType = resourceType
+        logicalId = logicalId
+        importId = importId
+    }
+
+let remapAppScalableTarget
+    (resource: AwsCloudFormationResource)
+    (resourceData: Dictionary<string, Dictionary<string,string>>)
+    (spec: CustomRemapSpecification) 
+    : RemappedSpecResult = 
+    let data = resourceData[resource.logicalId]
+    let physicalIdParts = data["Id"].Split("|")
+    let importId = 
+        if physicalIdParts.Length = 3 then
+            [physicalIdParts[2]; physicalIdParts[0]; physicalIdParts[1]]
+            |> String.concat spec.delimiter
+        else ""
+                
     let resourceType = spec.pulumiType
     let logicalId = resource.logicalId.Replace("-", "_")
     {
@@ -142,7 +159,7 @@ let remapSpecifications = Map.ofList [
     }
 
     "AWS::ApiGateway::Deployment" => {
-        pulumiType = "aws:apigateway/deployment:Deployment"
+        pulumiType = getPulumiType "AWS::ApiGateway::Deployment"
         importIdentityParts = ["RestApiId"; "Id"]
         delimiter = "/"
         remapFunc = remapFromImportIdentityParts
@@ -150,7 +167,7 @@ let remapSpecifications = Map.ofList [
     }
 
     "AWS::ApiGateway::UsagePlanKey" => {
-        pulumiType = "aws:apigateway/usagePlanKey:UsagePlanKey"
+        pulumiType = getPulumiType "AWS::ApiGateway::UsagePlanKey"
         importIdentityParts = ["UsagePlanId"; "KeyId"]
         delimiter = "/"
         remapFunc = remapFromImportIdentityParts
@@ -159,22 +176,28 @@ let remapSpecifications = Map.ofList [
 
     "AWS::ApplicationAutoScaling::ScalingPolicy" => {
         pulumiType = getPulumiType "AWS::ApplicationAutoScaling::ScalingPolicy"
-        importIdentityParts = ["ServiceNamespace"; "ResourceId"; "ScalableDimension"; "PolicyName"]
+        // as per pulumi registry, import id should be made up of service-namespace , resource-id, scalable-dimension 
+        // and policy-name separated by /
+        // ServiceNamespace, ResourceId and ScalableDimension can be parsed out of ScalingTargetId
+        importIdentityParts = ["ScalingTargetId"; "PolicyName"]
         delimiter = "/"
-        remapFunc = remapFromImportIdentityParts
+        remapFunc = remapAppScalingPolicy
         validatorFunc = remapFromImportIdentityPartsValidator
     }
 
     "AWS::ApplicationAutoScaling::ScalableTarget" => {
+        // as per pulumi registry, import Application AutoScaling Target using the service-namespace , 
+        // resource-id and scalable-dimension separated by /
+        // all three can be parsed from the physical id
         pulumiType = getPulumiType "AWS::ApplicationAutoScaling::ScalableTarget"
-        importIdentityParts = ["ServiceNamespace"; "ResourceId"; "ScalableDimension"]
+        importIdentityParts = ["Id"]
         delimiter = "/"
-        remapFunc = remapFromImportIdentityParts
+        remapFunc = remapAppScalableTarget
         validatorFunc = remapFromImportIdentityPartsValidator
     }
 
     "AWS::EC2::SubnetRouteTableAssociation" => {
-        pulumiType = "aws:ec2/routeTableAssociation:RouteTableAssociation"
+        pulumiType = getPulumiType "AWS::EC2::SubnetRouteTableAssociation"
         importIdentityParts = ["SubnetId"; "RouteTableId"]
         delimiter = "/"
         remapFunc = remapFromImportIdentityParts
@@ -182,7 +205,7 @@ let remapSpecifications = Map.ofList [
     }
 
     "AWS::ECS::Service" => {
-        pulumiType = "aws:ecs/service:Service"
+        pulumiType = getPulumiType "AWS::ECS::Service"
         importIdentityParts = ["Id"]
         delimiter = "/"
         remapFunc = remapFromIdAsArn
@@ -198,7 +221,7 @@ let remapSpecifications = Map.ofList [
     }
 
     "AWS::Lambda::Permission" => {
-        pulumiType = "aws:lambda/permission:Permission"
+        pulumiType = getPulumiType "AWS::Lambda::Permission"
         importIdentityParts = ["FunctionName"; "Id"]
         delimiter = "/"
         remapFunc = remapFromImportIdentityParts
@@ -214,7 +237,7 @@ let remapSpecifications = Map.ofList [
     }
 
     "AWS::S3::BucketPolicy" => {
-        pulumiType = "aws:s3/bucketPolicy:BucketPolicy"
+        pulumiType = getPulumiType "AWS::S3::BucketPolicy"
         importIdentityParts = ["Bucket"]
         delimiter = "/"
         remapFunc = remapFromImportIdentityParts
