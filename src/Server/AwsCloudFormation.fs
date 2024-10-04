@@ -195,7 +195,7 @@ let mapToPulumi = function
 // | "AWS::CloudFormation::WaitCondition" -> Error "not found"
 // | "AWS::CloudFormation::WaitConditionHandle" -> Error "not found"
 | "AWS::CloudFront::CachePolicy" -> Some "aws:cloudfront/cachePolicy:CachePolicy"
-// | "AWS::CloudFront::CloudFrontOriginAccessIdentity" -> Error "not found"
+| "AWS::CloudFront::CloudFrontOriginAccessIdentity" -> Some "aws:cloudfront/originAccessIdentity:OriginAccessIdentity"
 | "AWS::CloudFront::ContinuousDeploymentPolicy" -> Some "aws:cloudfront/continuousDeploymentPolicy:ContinuousDeploymentPolicy"
 | "AWS::CloudFront::Distribution" -> Some "aws:cloudfront/distribution:Distribution"
 | "AWS::CloudFront::Function" -> Some "aws:cloudfront/function:Function"

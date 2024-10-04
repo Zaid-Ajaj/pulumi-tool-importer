@@ -184,6 +184,7 @@ let cloudformationMappings = function
 | "ApplicationAutoScaling", "ScalableTarget" -> "appautoscaling", "target"
 | "Amplify", "Domain" -> "Amplify", "DomainAssociation"
 | "AutoScaling", "AutoScalingGroup" -> "Autoscaling", "Group"
+| "CloudFront", "CloudFrontOriginAccessIdentity" -> "cloudfront", "originAccessIdentity"
 | "SNS", "Topic" -> "sns", "TopicSubscription"
 | "EC2", "DHCPOptions" -> "EC2", "VpcDhcpOptions"
 | "EC2", "EC2Fleet" -> "EC2", "Fleet"
