@@ -1,42 +1,223 @@
 module AwsCloudFormationTemplates
 
+open System
+
+open Newtonsoft.Json.Linq
+
 open AwsCloudFormationTypes
+open System.Collections.Generic
+open Shared
+
 let private (=>) key value = key, value
+
+let getPulumiType (cfnType: string) =
+    match AwsCloudFormation.mapToPulumi cfnType with
+    | Some(pulumiType) -> pulumiType
+    | None -> ""
+
+let hasImportIdentityParts
+    (resource: AwsCloudFormationResource)
+    (resourceData: Dictionary<string, Dictionary<string,string>>)
+    (spec: CustomRemapSpecification) 
+    : bool =
+    spec.importIdentityParts
+    |> Seq.forall (fun part -> resourceData[resource.logicalId].ContainsKey part)
+
+let remapFromImportIdentityPartsValidator
+    (resource: AwsCloudFormationResource)
+    (resourceData: Dictionary<string, Dictionary<string,string>>)
+    (spec: CustomRemapSpecification) 
+    : bool =
+    resourceData.ContainsKey resource.logicalId
+    && hasImportIdentityParts resource resourceData spec
+
+// for resources whose import id can be constructed from resource references in the template
+let remapFromImportIdentityParts
+    (resource: AwsCloudFormationResource)
+    (resourceData: Dictionary<string, Dictionary<string,string>>)
+    (spec: CustomRemapSpecification) 
+    : RemappedSpecResult = 
+    let data = resourceData[resource.logicalId]
+    let importId =
+        spec.importIdentityParts
+        |> Seq.map (fun partKey -> data[partKey])
+        |> String.concat spec.delimiter
+    let resourceType = spec.pulumiType
+    let logicalId = resource.logicalId.Replace("-", "_")
+    {
+        resourceType = resourceType
+        logicalId = logicalId
+        importId = importId
+    }
+
+let remapFromImportIdentityPartsDNSRecord
+    (resource: AwsCloudFormationResource)
+    (resourceData: Dictionary<string, Dictionary<string,string>>)
+    (spec: CustomRemapSpecification) 
+    : RemappedSpecResult = 
+    let data = resourceData[resource.logicalId]
+    let importId =
+        spec.importIdentityParts
+        |> Seq.map (fun partKey -> data[partKey])
+        |> String.concat spec.delimiter
+        |> (fun id -> 
+            if data.ContainsKey("SetIdentifier") then 
+                String.concat spec.delimiter [id; data["SetIdentifier"]]
+            else
+                id)
+    let resourceType = spec.pulumiType
+    let logicalId = resource.logicalId.Replace("-", "_")
+    {
+        resourceType = resourceType
+        logicalId = logicalId
+        importId = importId
+    }
+
+// for resources whose physical id is the arn
+let remapFromIdAsArn
+    (resource: AwsCloudFormationResource)
+    (resourceData: Dictionary<string, Dictionary<string,string>>)
+    (spec: CustomRemapSpecification) 
+    : RemappedSpecResult = 
+    let data = resourceData[resource.logicalId]
+    let importIdParts = data["Id"].Split("/")[1..]
+    let importId = String.Join(spec.delimiter, importIdParts)
+    let resourceType = spec.pulumiType
+    let logicalId = resource.logicalId.Replace("-", "_")
+    {
+        resourceType = resourceType
+        logicalId = logicalId
+        importId = importId
+    }
+
+let listenerCertificateValidator
+    (resource: AwsCloudFormationResource)
+    (resourceData: Dictionary<string, Dictionary<string,string>>)
+    (spec: CustomRemapSpecification)
+    : bool =
+    let hasFields = remapFromImportIdentityPartsValidator resource resourceData spec
+    let certificatesParses =
+        try
+            JArray.Parse ((resourceData[resource.logicalId])["Certificates"]) |> ignore
+            true
+        with
+            | ex -> false
+    hasFields && certificatesParses
+
+let remapFromImportIdentityPartsListenerCertificate
+    (resource: AwsCloudFormationResource)
+    (resourceData: Dictionary<string, Dictionary<string,string>>)
+    (spec: CustomRemapSpecification) 
+    : RemappedSpecResult =
+    let data = resourceData[resource.logicalId]
+    let listenerArn = data["ListenerArn"]
+    let certificates = JArray.Parse data["Certificates"]
+    let certificateObj = certificates[0]
+    let certificateArn = certificateObj["CertificateArn"].ToString()
+    let importId = String.concat spec.delimiter [listenerArn; certificateArn]
+    
+    let resourceType = spec.pulumiType
+    let logicalId = resource.logicalId.Replace("-", "_")
+    {
+        resourceType = resourceType
+        logicalId = logicalId
+        importId = importId
+    }
 
 let remapSpecifications = Map.ofList [
     "AWS::ApiGateway::Resource" => {
         pulumiType = "aws:apigateway/resource:Resource"
         importIdentityParts = ["RestApiId"; "Id"]
         delimiter = "/"
+        remapFunc = remapFromImportIdentityParts
+        validatorFunc = remapFromImportIdentityPartsValidator
     }
 
     "AWS::ApiGateway::Stage" => {
         pulumiType = "aws:apigateway/stage:Stage"
         importIdentityParts = ["RestApiId"; "Id"]
         delimiter = "/"
+        remapFunc = remapFromImportIdentityParts
+        validatorFunc = remapFromImportIdentityPartsValidator
     }
 
     "AWS::ApiGateway::Deployment" => {
         pulumiType = "aws:apigateway/deployment:Deployment"
         importIdentityParts = ["RestApiId"; "Id"]
         delimiter = "/"
+        remapFunc = remapFromImportIdentityParts
+        validatorFunc = remapFromImportIdentityPartsValidator
     }
 
     "AWS::ApiGateway::UsagePlanKey" => {
         pulumiType = "aws:apigateway/usagePlanKey:UsagePlanKey"
         importIdentityParts = ["UsagePlanId"; "KeyId"]
         delimiter = "/"
+        remapFunc = remapFromImportIdentityParts
+        validatorFunc = remapFromImportIdentityPartsValidator
+    }
+
+    "AWS::ApplicationAutoScaling::ScalingPolicy" => {
+        pulumiType = getPulumiType "AWS::ApplicationAutoScaling::ScalingPolicy"
+        importIdentityParts = ["ServiceNamespace"; "ResourceId"; "ScalableDimension"; "PolicyName"]
+        delimiter = "/"
+        remapFunc = remapFromImportIdentityParts
+        validatorFunc = remapFromImportIdentityPartsValidator
+    }
+
+    "AWS::ApplicationAutoScaling::ScalableTarget" => {
+        pulumiType = getPulumiType "AWS::ApplicationAutoScaling::ScalableTarget"
+        importIdentityParts = ["ServiceNamespace"; "ResourceId"; "ScalableDimension"]
+        delimiter = "/"
+        remapFunc = remapFromImportIdentityParts
+        validatorFunc = remapFromImportIdentityPartsValidator
     }
 
     "AWS::EC2::SubnetRouteTableAssociation" => {
         pulumiType = "aws:ec2/routeTableAssociation:RouteTableAssociation"
         importIdentityParts = ["SubnetId"; "RouteTableId"]
         delimiter = "/"
+        remapFunc = remapFromImportIdentityParts
+        validatorFunc = remapFromImportIdentityPartsValidator
+    }
+
+    "AWS::ECS::Service" => {
+        pulumiType = "aws:ecs/service:Service"
+        importIdentityParts = ["Id"]
+        delimiter = "/"
+        remapFunc = remapFromIdAsArn
+        validatorFunc = remapFromImportIdentityPartsValidator
+    }
+
+    "AWS::ElasticLoadBalancingV2::ListenerCertificate" => {
+        pulumiType = getPulumiType "AWS::ElasticLoadBalancingV2::ListenerCertificate"
+        importIdentityParts = ["ListenerArn"; "Certificates"]
+        delimiter = "_"
+        remapFunc = remapFromImportIdentityParts
+        validatorFunc = remapFromImportIdentityPartsValidator
     }
 
     "AWS::Lambda::Permission" => {
         pulumiType = "aws:lambda/permission:Permission"
         importIdentityParts = ["FunctionName"; "Id"]
         delimiter = "/"
+        remapFunc = remapFromImportIdentityParts
+        validatorFunc = remapFromImportIdentityPartsValidator
+    }
+
+    "AWS::Route53::RecordSet" => {
+        pulumiType = getPulumiType "AWS::Route53::RecordSet"
+        importIdentityParts = ["HostedZoneId"; "Name"; "Type"]
+        delimiter = "_"
+        remapFunc = remapFromImportIdentityPartsDNSRecord
+        validatorFunc = remapFromImportIdentityPartsValidator
+    }
+
+    "AWS::S3::BucketPolicy" => {
+        pulumiType = "aws:s3/bucketPolicy:BucketPolicy"
+        importIdentityParts = ["Bucket"]
+        delimiter = "/"
+        remapFunc = remapFromImportIdentityParts
+        validatorFunc = remapFromImportIdentityPartsValidator
     }
 ]
