@@ -709,42 +709,25 @@ let shouldCheckPropNameForReferenceProperty
     (propName: string)
     (resourceType: string)
     : bool =
-    match getImportIdentityParts resourceType with
-    | Some(importIdentityParts) -> 
-        propName.EndsWith IdProperty || 
-        propName.EndsWith ArnProperty || 
-        propName.EndsWith "Name" ||
-        propName.EndsWith "Identifier" ||
-        Seq.contains propName importIdentityParts
-    | _ -> 
+    let hasIdentifierSuffix = 
         propName.EndsWith IdProperty || 
         propName.EndsWith ArnProperty || 
         propName.EndsWith "Name" ||
         propName.EndsWith "Identifier"
-
-let addImportIdentityParts
-    (resourceId: string)
-    (resourceType: string)
-    (properties: JObject)
-    (data: Dictionary<string, Dictionary<string, string>>) =
-    let importIdentityParts = getImportIdentityParts resourceType
-    match importIdentityParts with
-    | Some(parts) ->
-        let definedImportIdentityParts = parts |> Seq.filter (fun part -> properties.ContainsKey part)
-        for part in definedImportIdentityParts do
-            if not (data.ContainsKey resourceId) then data.Add(resourceId, Dictionary<string, string>())
-            let prop = properties[part]
-            if not (data[resourceId].ContainsKey part) then 
-                data[resourceId].Add(part, prop.ToString())
-    | _ -> ()
+    match getImportIdentityParts resourceType with
+    | Some(importIdentityParts) -> 
+        hasIdentifierSuffix || Seq.contains propName importIdentityParts
+    | _ -> 
+        hasIdentifierSuffix
 
 let rec resolveTokenValue
     (data: Dictionary<string, Dictionary<string,string>>)
     (stackExports: Map<string,string>)
     (token: JToken)
     : string =
-    if token.Type = JTokenType.Object then // if the reference is to another resource in the template...
+    if token.Type = JTokenType.Object then 
         let obj = token.ToObject<JObject>()
+        // if the reference is to another resource in the template...
         if obj.ContainsKey "Ref" then
             let referencedResourceLogicalId = obj["Ref"].ToObject<string>()
             if data.ContainsKey referencedResourceLogicalId then
@@ -772,6 +755,7 @@ let rec resolveTokenValue
                 stackExports[referencedImportKey]
             else ""
 
+        // evaluating a Fn::Join requires recursive evaluation of the join parts
         elif obj.ContainsKey "Fn::Join" then
             let join = obj["Fn::Join"].ToObject<JArray>()
             if join.Count = 2 && join[0].Type = JTokenType.String && join[1].Type = JTokenType.Array then
@@ -780,15 +764,25 @@ let rec resolveTokenValue
                 let resolvedParts = joinParts 
                                     |> Seq.map (fun part -> 
                                         resolveTokenValue data stackExports part)
-                // printfn "%A\n" resolvedParts
                 String.Join(delimiter, resolvedParts)
             else ""
 
+        // for edge cases where the reference property is buried in a (seemingly unnecessary)
+        // nested object with one property, like in "AWS::ElasticLoadBalancingV2::ListenerCertificate"
+        // "Certificates": [
+        //   {
+        //     "CertificateArn": {
+        //       "Fn::ImportValue": "dev2-KyruusV2CertificateArn"
+        //     }
+        //   }
+        // ]
         elif obj.Count = 1 then
             let prop = obj.First.ToObject<JProperty>()
             resolveTokenValue data stackExports prop.Value
         else ""
-
+    // also part of handling of above edge case, where the reference property is inside
+    // an array that is only allowed to have one item, see 
+    // https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-elasticloadbalancingv2-listenercertificate.html#cfn-elasticloadbalancingv2-listenercertificate-certificates
     elif token.Type = JTokenType.Array then
         let arr = token.ToObject<JArray>()
         if arr.Count = 1 then
@@ -799,65 +793,7 @@ let rec resolveTokenValue
         token.ToObject<string>()
         
     else 
-        try 
-            printfn "%A" token.Type
-            token.ToString()
-        with
-        | ex -> 
-            printfn "%A" ex
-            ""
-        
-
-let rec addReferencePropertiesToResourceData
-    (resourceId: string) 
-    (resource: JObject)
-    (resourceType: string)
-    (propName: string)
-    (data: Dictionary<string, Dictionary<string,string>>)
-    (stackExports: Map<string,string>)
-    (token: JToken) =
-    if token.Type = JTokenType.Array then
-        for token in token.Children() do
-            addReferencePropertiesToResourceData resourceId resource resourceType propName data stackExports token
-    if token.Type = JTokenType.Object then
-        let obj = token :?> JObject
-        for prop in obj.Properties() do
-            if prop.Value.Type = JTokenType.Object then
-                addReferencePropertiesToResourceData resourceId resource resourceType propName data stackExports prop.Value
-            printfn "%A" prop.Name
-        // if the reference is to another resource in the template...
-        if obj.ContainsKey "Ref" then
-            let referencedResourceLogicalId = obj["Ref"].ToObject<string>()
-            if data.ContainsKey referencedResourceLogicalId then
-                if data[referencedResourceLogicalId].ContainsKey IdProperty then
-                    let id = data[referencedResourceLogicalId][IdProperty]
-                    if not (data.ContainsKey resourceId) then data.Add(resourceId, Dictionary<string, string>())
-                    // add map of ref property name to id of referenced resource to return data map under 
-                    // logical id referring resource
-                    data[resourceId].Add(propName, id)
-
-        // if the reference is to an attribute of another resource in the template...
-        if obj.ContainsKey "Fn::GetAtt" && obj["Fn::GetAtt"].Type = JTokenType.Array then
-            let getAtt = obj["Fn::GetAtt"].ToObject<JArray>()
-            if getAtt.Count = 2 && getAtt[0].Type = JTokenType.String then
-                let referencedResourceLogicalId = getAtt[0].ToObject<string>()
-                if data.ContainsKey referencedResourceLogicalId then
-                    if data[referencedResourceLogicalId].ContainsKey IdProperty then
-                        let id = data[referencedResourceLogicalId][IdProperty]
-                        if not (data.ContainsKey resourceId) then data.Add(resourceId, Dictionary<string, string>())
-                        // add map of ref property name to id of referenced resource to return data map under 
-                        // logical id referring resource
-                        data[resourceId].Add(propName, id)
-        
-        // if the reference is to a stack export from another template...
-        if obj.ContainsKey "Fn::ImportValue" then
-            let referencedImportKey = obj["Fn::ImportValue"].ToObject<string>()
-            if stackExports.ContainsKey referencedImportKey then
-                let importValue = stackExports[referencedImportKey]
-                if not (data.ContainsKey resourceId) then data.Add(resourceId, Dictionary<string, string>())
-                // add map of ref property name to id of referenced resource to return data map under 
-                // logical id referring resource
-                data[resourceId].Add(propName, importValue)
+        ""
 
 // returns resource dependency data and cfn template as JObject
 let templateBodyData 
@@ -899,17 +835,7 @@ let templateBodyData
                 let referenceValue = resolveTokenValue data stackExports property.Value
                 if not (data.ContainsKey resourceId) then data.Add(resourceId, Dictionary<string, string>())
                 data[resourceId].Add(property.Name, referenceValue)
-                // addReferencePropertiesToResourceData 
-                //     resourceId
-                //     resource
-                //     resourceType
-                //     property.Name
-                //     data
-                //     stackExports
-                //     property.Value
                 
-        // add importIdentityParts that have not already been added as reference properties
-        addImportIdentityParts resourceId resourceType properties data
     data, bodyJson
 
 let routeTableAssociationType = "AWS::EC2::SubnetRouteTableAssociation"
@@ -1094,7 +1020,6 @@ let getPulumiImportJson
 
 let getAwsCloudFormationResources (stack: AwsCloudFormationStack) = task {
     try
-        printfn "%A" stack.stackName
         // instantiate cloudformation client
         let client = cloudFormationClient stack.region
         // get cloudformation stack template from aws api
@@ -1120,9 +1045,6 @@ let getAwsCloudFormationResources (stack: AwsCloudFormationStack) = task {
 
         // get resource dependency map and cfn template as JObject
         let resourceData, bodyJson = templateBodyData stackTemplate cloudformationResources stackExports stack.region
-
-        // TEMP for demo
-        // if stack.stackName = "dev2-dropbeacon" then resourceData["DNSRecord"].Add("SetIdentifier", "dropbeacon.dev2.healthsparq.com./us-west-2")
 
         // get set of resource types
         let resourceTypes = Set [ for resource in cloudformationResources -> resource.resourceType ]
