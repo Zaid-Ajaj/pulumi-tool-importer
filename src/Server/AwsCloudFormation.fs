@@ -777,7 +777,7 @@ let mapToPulumi = function
 // | "AWS::LakeFormation::TagAssociation" -> Error "not found"
 | "AWS::Lambda::Alias" -> Some "aws:lambda/alias:Alias"
 | "AWS::Lambda::CodeSigningConfig" -> Some "aws:lambda/codeSigningConfig:CodeSigningConfig"
-// | "AWS::Lambda::EventInvokeConfig" -> Error "not found"
+| "AWS::Lambda::EventInvokeConfig" -> Some "aws:lambda/functionEventInvokeConfig:FunctionEventInvokeConfig"
 | "AWS::Lambda::EventSourceMapping" -> Some "aws:lambda/eventSourceMapping:EventSourceMapping"
 | "AWS::Lambda::Function" -> Some "aws:lambda/function:Function"
 | "AWS::Lambda::LayerVersion" -> Some "aws:lambda/layerVersion:LayerVersion"

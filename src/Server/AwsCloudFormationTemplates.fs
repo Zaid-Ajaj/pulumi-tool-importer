@@ -35,6 +35,7 @@ let remapFromImportIdentityPartsValidator
 let remapFromImportIdentityParts
     (resource: AwsCloudFormationResource)
     (resourceData: Dictionary<string, Dictionary<string,string>>)
+    (resourceContext: AwsResourceContext)
     (spec: CustomRemapSpecification) 
     : RemappedSpecResult = 
     let data = resourceData[resource.logicalId]
@@ -53,6 +54,7 @@ let remapFromImportIdentityParts
 let remapFromImportIdentityPartsDNSRecord
     (resource: AwsCloudFormationResource)
     (resourceData: Dictionary<string, Dictionary<string,string>>)
+    (resourceContext: AwsResourceContext)
     (spec: CustomRemapSpecification) 
     : RemappedSpecResult = 
     let data = resourceData[resource.logicalId]
@@ -77,6 +79,7 @@ let remapFromImportIdentityPartsDNSRecord
 let remapFromIdAsArn
     (resource: AwsCloudFormationResource)
     (resourceData: Dictionary<string, Dictionary<string,string>>)
+    (resourceContext: AwsResourceContext)
     (spec: CustomRemapSpecification) 
     : RemappedSpecResult = 
     let data = resourceData[resource.logicalId]
@@ -102,6 +105,7 @@ let remapFromImportIdentityPartsValidatorAppScalingPolicy
 let remapAppScalingPolicy
     (resource: AwsCloudFormationResource)
     (resourceData: Dictionary<string, Dictionary<string,string>>)
+    (resourceContext: AwsResourceContext)
     (spec: CustomRemapSpecification) 
     : RemappedSpecResult = 
     let data = resourceData[resource.logicalId]
@@ -123,6 +127,7 @@ let remapAppScalingPolicy
 let remapAppScalableTarget
     (resource: AwsCloudFormationResource)
     (resourceData: Dictionary<string, Dictionary<string,string>>)
+    (resourceContext: AwsResourceContext)
     (spec: CustomRemapSpecification) 
     : RemappedSpecResult = 
     let data = resourceData[resource.logicalId]
@@ -133,6 +138,54 @@ let remapAppScalableTarget
             |> String.concat spec.delimiter
         else ""
                 
+    let resourceType = spec.pulumiType
+    let logicalId = resource.logicalId.Replace("-", "_")
+    {
+        resourceType = resourceType
+        logicalId = logicalId
+        importId = importId
+    }
+
+let remapIngressRule
+    (resource: AwsCloudFormationResource)
+    (resourceData: Dictionary<string, Dictionary<string,string>>)
+    (resourceContext: AwsResourceContext)
+    (spec: CustomRemapSpecification) 
+    : RemappedSpecResult = 
+    let data = resourceData[resource.logicalId]
+    let groupId = data[((spec.importIdentityParts)[0])]
+    let importId = 
+        if resourceContext.securityGroupRuleIds.ContainsKey groupId then
+            let rules = ((resourceContext.securityGroupRuleIds)[groupId])
+            let ingressRules = rules |> Seq.filter (fun rule -> not rule.IsEgress)
+            if not ((Seq.length ingressRules) = 1) then ""
+            else (Seq.exactlyOne ingressRules).SecurityGroupRuleId
+        else ""
+  
+    let resourceType = spec.pulumiType
+    let logicalId = resource.logicalId.Replace("-", "_")
+    {
+        resourceType = resourceType
+        logicalId = logicalId
+        importId = importId
+    }
+
+let remapEgressRule
+    (resource: AwsCloudFormationResource)
+    (resourceData: Dictionary<string, Dictionary<string,string>>)
+    (resourceContext: AwsResourceContext)
+    (spec: CustomRemapSpecification) 
+    : RemappedSpecResult = 
+    let data = resourceData[resource.logicalId]
+    let groupId = data[((spec.importIdentityParts)[0])]
+    let importId = 
+        if resourceContext.securityGroupRuleIds.ContainsKey groupId then
+            let rules = ((resourceContext.securityGroupRuleIds)[groupId])
+            let egressRules = rules |> Seq.filter (fun rule -> rule.IsEgress)
+            if not ((Seq.length egressRules) = 1) then ""
+            else (Seq.exactlyOne egressRules).SecurityGroupRuleId
+        else ""
+  
     let resourceType = spec.pulumiType
     let logicalId = resource.logicalId.Replace("-", "_")
     {
@@ -204,6 +257,22 @@ let remapSpecifications = Map.ofList [
         validatorFunc = remapFromImportIdentityPartsValidator
     }
 
+    "AWS::EC2::SecurityGroupIngress" => {
+        pulumiType = getPulumiType "AWS::EC2::SecurityGroupIngress"
+        importIdentityParts = ["GroupId"]
+        delimiter = ""
+        remapFunc = remapIngressRule
+        validatorFunc = remapFromImportIdentityPartsValidator
+    }
+
+    "AWS::EC2::SecurityGroupEgress" => {
+        pulumiType = getPulumiType "AWS::EC2::SecurityGroupEgress"
+        importIdentityParts = ["GroupId"]
+        delimiter = ""
+        remapFunc = remapEgressRule
+        validatorFunc = remapFromImportIdentityPartsValidator
+    }
+
     "AWS::ECS::Service" => {
         pulumiType = getPulumiType "AWS::ECS::Service"
         importIdentityParts = ["Id"]
@@ -224,6 +293,14 @@ let remapSpecifications = Map.ofList [
         pulumiType = getPulumiType "AWS::Lambda::Permission"
         importIdentityParts = ["FunctionName"; "Id"]
         delimiter = "/"
+        remapFunc = remapFromImportIdentityParts
+        validatorFunc = remapFromImportIdentityPartsValidator
+    }
+
+    "AWS::Lambda::EventInvokeConfig" => {
+        pulumiType = getPulumiType "AWS::Lambda::EventInvokeConfig"
+        importIdentityParts = ["FunctionName"; "Qualifier"]
+        delimiter = ":"
         remapFunc = remapFromImportIdentityParts
         validatorFunc = remapFromImportIdentityPartsValidator
     }

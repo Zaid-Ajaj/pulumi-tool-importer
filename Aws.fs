@@ -243,6 +243,7 @@ let cloudformationMappings = function
 | "ElasticLoadBalancingV2", "TargetGroup" -> "lb", "TargetGroup"
 | "ElasticLoadBalancingV2", "ListenerCertificate" -> "lb", "ListenerCertificate"
 | "ElasticLoadBalancingV2", "ListenerRule" -> "lb", "ListenerRule"
+| "Lambda", "EventInvokeConfig" -> "lambda", "FunctionEventInvokeConfig"
 | "Route53", "RecordSet" -> "route53", "Record"
 | "Route53", "HostedZone" -> "route53", "Zone"
 | "Route53Resolver", "ResolverEndpoint" -> "route53", "ResolverEndpoint"
