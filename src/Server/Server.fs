@@ -29,6 +29,8 @@ open Amazon.IdentityManagement
 open Amazon.IdentityManagement.Model
 open Amazon.Route53
 open Amazon.Route53.Model
+open Amazon.CloudControlApi
+open Amazon.CloudControlApi.Model
 open Microsoft.Extensions.Logging
 open Amazon.EC2
 open AwsCloudFormationTypes
@@ -66,6 +68,12 @@ let ec2Client(region: string) =
         new AmazonEC2Client(awsEnvCredentials())
     else
         new AmazonEC2Client(awsEnvCredentials(), RegionEndpoint.GetBySystemName region)
+
+let cloudControlApiClient(region: string) =
+    if region = unsetDefaultRegion then
+        new AmazonCloudControlApiClient(awsEnvCredentials())
+    else
+        new AmazonCloudControlApiClient(awsEnvCredentials(), RegionEndpoint.GetBySystemName region)
 
 let iamClient (region: string) =
     if region = unsetDefaultRegion then
@@ -911,21 +919,56 @@ let getImportIdsForVPCGatewayAttachments
     return data
 }
 
-let getSecurityGroupRuleIds 
-    (cloudformationResources: seq<AwsCloudFormationResource>) 
-    (region: string ) = task {
-    let data = Dictionary<string, seq<SecurityGroupRule>>()
-    let client = ec2Client region
-    let securityGroups = 
-            cloudformationResources
-            |> Seq.filter (fun resource -> resource.resourceType = "AWS::EC2::SecurityGroup")
-    for group in securityGroups do
-        let request = DescribeSecurityGroupRulesRequest()
-        let filters = List<Filter>([Filter("group-id",List<string>([group.resourceId]))])
-        request.Filters <- filters
-        let! response = client.DescribeSecurityGroupRulesAsync(request)
-        data.Add(group.resourceId, response.SecurityGroupRules)
-    return data
+let rec listResourcesRec
+    (client: AmazonCloudControlApiClient) 
+    (nextToken: string option)
+    (typeName: string) 
+    (region: string) 
+    : Task<List<ResourceDescription>> = task {
+    let resources = List()
+    let request = ListResourcesRequest()
+    request.TypeName <- typeName
+    nextToken |> Option.iter (fun token -> request.NextToken <- token)
+    let! response = client.ListResourcesAsync(request)
+    resources.AddRange response.ResourceDescriptions
+    if not (isNull response.NextToken) then
+        let! next = listResourcesRec client (Some response.NextToken) typeName region
+        resources.AddRange next
+    
+    return resources
+}
+
+let resourceTypeInTemplate
+    (resourceType: string)
+    (cloudformationResources: seq<AwsCloudFormationResource>)
+    : bool =
+    let count = 
+        cloudformationResources 
+        |> Seq.filter (fun resource -> resource.resourceType = resourceType)
+        |> Seq.length
+    count > 0
+
+let listResources
+    (cloudformationResources: seq<AwsCloudFormationResource>)
+    (typeName: string)
+    (region: string) = task {
+    let client = cloudControlApiClient region
+    if resourceTypeInTemplate typeName cloudformationResources then
+        let! resources = listResourcesRec client None typeName region
+        return resources
+            |> Seq.map (fun resource -> 
+                let properties = 
+                    try 
+                        JObject.Parse(resource.Properties)
+                    with
+                    | ex -> 
+                        printfn "%A" ex
+                        JObject()
+                resource.Identifier, properties)
+            |> Map.ofSeq
+    else
+        let empty : Map<string,JObject> = Map.ofList []
+        return empty
 }
 
 let getRemappedImportProps 
@@ -1081,15 +1124,18 @@ let getAwsCloudFormationResources (stack: AwsCloudFormationStack) = task {
         // get map of logical ids of vpc gateway attachments to import ids
         let! gatewayAttachmentImportIds = getImportIdsForVPCGatewayAttachments cloudformationResources stack.region
 
-        let! securityGroupRuleIds = getSecurityGroupRuleIds cloudformationResources stack.region
+        let! securityGroupIngressRules = listResources cloudformationResources "AWS::EC2::SecurityGroupIngress" stack.region
 
+        let! securityGroupEgressRules = listResources cloudformationResources "AWS::EC2::SecurityGroupEgress" stack.region
+        
         let resourceContext = {
             loadBalancers = loadBalancers
             elasticIps = elasticIps
             routeTables = routeTables
             iamPolicies = iamPolicies
             gatewayAttachmentImportIds = gatewayAttachmentImportIds
-            securityGroupRuleIds = securityGroupRuleIds
+            securityGroupIngressRules = securityGroupIngressRules
+            securityGroupEgressRules = securityGroupEgressRules
         }
 
         let (pulumiImportJson, errors) = getPulumiImportJson 

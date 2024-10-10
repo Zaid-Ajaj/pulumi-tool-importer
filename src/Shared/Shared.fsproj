@@ -9,4 +9,5 @@
   <ItemGroup>
     <PackageReference Include="PulumiSchemaTypes" Version="1.1.0" />
   </ItemGroup>
+  <Import Project="..\..\.paket\Paket.Restore.targets" />
 </Project>

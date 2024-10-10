@@ -3,6 +3,7 @@ module AwsCloudFormationTypes
 open Amazon.EC2.Model
 open Amazon.ElasticLoadBalancingV2.Model
 open Amazon.IdentityManagement.Model
+open Newtonsoft.Json.Linq
 
 open System.Collections.Generic
 open Shared
@@ -20,7 +21,8 @@ type AwsResourceContext = {
     routeTables: List<RouteTable>
     iamPolicies: List<ManagedPolicy>
     gatewayAttachmentImportIds: Dictionary<string,string>
-    securityGroupRuleIds: Dictionary<string, seq<SecurityGroupRule>>
+    securityGroupIngressRules: Map<string,JObject>
+    securityGroupEgressRules: Map<string,JObject>
 }
 
 type CustomRemapSpecification = {
