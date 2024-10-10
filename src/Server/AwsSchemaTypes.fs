@@ -2196,3 +2196,522 @@ let resourcesWithOddImportFormat = Map.ofList [
         "$ pulumi import aws:wafv2/regexPatternSet:RegexPatternSet example a1b2c3d4-d5f6-7777-8888-9999aaaabbbbcccc/example/REGIONAL"
     ]
 ]
+
+// The following 179 resources could require an odd format to import
+// an odd format being something other than just the resource ID or resource ARN
+
+let resourceTextsWithOddImportFormat = Map.ofList [
+    "aws:accessanalyzer/archiveRule:ArchiveRule", [
+        "Using <code>pulumi import</code>, import AccessAnalyzer ArchiveRule using the <code>analyzer_name/rule_name</code>. For example:"
+    ]
+    "aws:amplify/backendEnvironment:BackendEnvironment", [
+        "Using <code>pulumi import</code>, import Amplify backend environment using <code>app_id</code> and <code>environment_name</code>. For example:"
+    ]
+    "aws:amplify/branch:Branch", [
+        "Using <code>pulumi import</code>, import Amplify branch using <code>app_id</code> and <code>branch_name</code>. For example:"
+    ]
+    "aws:amplify/domainAssociation:DomainAssociation", [
+        "Using <code>pulumi import</code>, import Amplify domain association using <code>app_id</code> and <code>domain_name</code>. For example:"
+    ]
+    "aws:apigateway/authorizer:Authorizer", [
+        "Using <code>pulumi import</code>, import AWS API Gateway Authorizer using the <code>REST-API-ID/AUTHORIZER-ID</code>. For example:"
+    ]
+    "aws:apigateway/basePathMapping:BasePathMapping", [
+        "Using <code>pulumi import</code>, import <code>aws_api_gateway_base_path_mapping</code> using the domain name and base path. For example:"
+    ]
+    "aws:apigateway/deployment:Deployment", [
+        "Using <code>pulumi import</code>, import <code>aws_api_gateway_deployment</code> using <code>REST-API-ID/DEPLOYMENT-ID</code>. For example:"
+    ]
+    "aws:apigateway/documentationPart:DocumentationPart", [
+        "Using <code>pulumi import</code>, import API Gateway documentation_parts using <code>REST-API-ID/DOC-PART-ID</code>. For example:"
+    ]
+    "aws:apigateway/documentationVersion:DocumentationVersion", [
+        "Using <code>pulumi import</code>, import API Gateway documentation versions using <code>REST-API-ID/VERSION</code>. For example:"
+    ]
+    "aws:apigateway/integration:Integration", [
+        "Using <code>pulumi import</code>, import <code>aws_api_gateway_integration</code> using <code>REST-API-ID/RESOURCE-ID/HTTP-METHOD</code>. For example:"
+    ]
+    "aws:apigateway/integrationResponse:IntegrationResponse", [
+        "Using <code>pulumi import</code>, import <code>aws_api_gateway_integration_response</code> using <code>REST-API-ID/RESOURCE-ID/HTTP-METHOD/STATUS-CODE</code>. For example:"
+    ]
+    "aws:apigateway/method:Method", [
+        "Using <code>pulumi import</code>, import <code>aws_api_gateway_method</code> using <code>REST-API-ID/RESOURCE-ID/HTTP-METHOD</code>. For example:"
+    ]
+    "aws:apigateway/methodResponse:MethodResponse", [
+        "Using <code>pulumi import</code>, import <code>aws_api_gateway_method_response</code> using <code>REST-API-ID/RESOURCE-ID/HTTP-METHOD/STATUS-CODE</code>. For example:"
+    ]
+    "aws:apigateway/methodSettings:MethodSettings", [
+        "Using <code>pulumi import</code>, import <code>aws_api_gateway_method_settings</code> using <code>REST-API-ID/STAGE-NAME/METHOD-PATH</code>. For example:"
+    ]
+    "aws:apigateway/model:Model", [
+        "Using <code>pulumi import</code>, import <code>aws_api_gateway_model</code> using <code>REST-API-ID/NAME</code>. For example:"
+    ]
+    "aws:apigateway/requestValidator:RequestValidator", [
+        "Using <code>pulumi import</code>, import <code>aws_api_gateway_request_validator</code> using <code>REST-API-ID/REQUEST-VALIDATOR-ID</code>. For example:"
+    ]
+    "aws:apigateway/resource:Resource", [
+        "Using <code>pulumi import</code>, import <code>aws_api_gateway_resource</code> using <code>REST-API-ID/RESOURCE-ID</code>. For example:"
+    ]
+    "aws:apigateway/response:Response", [
+        "Using <code>pulumi import</code>, import <code>aws_api_gateway_gateway_response</code> using <code>REST-API-ID/RESPONSE-TYPE</code>. For example:"
+    ]
+    "aws:apigateway/stage:Stage", [
+        "Using <code>pulumi import</code>, import <code>aws_api_gateway_stage</code> using <code>REST-API-ID/STAGE-NAME</code>. For example:"
+    ]
+    "aws:apigateway/usagePlan:UsagePlan", [
+        "Using <code>pulumi import</code>, import AWS API Gateway Usage Plan using the <code>id</code>. For example:"
+    ]
+    "aws:apigateway/usagePlanKey:UsagePlanKey", [
+        "Using <code>pulumi import</code>, import AWS API Gateway Usage Plan Key using the <code>USAGE-PLAN-ID/USAGE-PLAN-KEY-ID</code>. For example:"
+    ]
+    "aws:apigatewayv2/apiMapping:ApiMapping", [
+        "Using <code>pulumi import</code>, import <code>aws_apigatewayv2_api_mapping</code> using the API mapping identifier and domain name. For example:"
+    ]
+    "aws:apigatewayv2/authorizer:Authorizer", [
+        "Using <code>pulumi import</code>, import <code>aws_apigatewayv2_authorizer</code> using the API identifier and authorizer identifier. For example:"
+    ]
+    "aws:apigatewayv2/deployment:Deployment", [
+        "Using <code>pulumi import</code>, import <code>aws_apigatewayv2_deployment</code> using the API identifier and deployment identifier. For example:"
+    ]
+    "aws:apigatewayv2/integration:Integration", [
+        "Using <code>pulumi import</code>, import <code>aws_apigatewayv2_integration</code> using the API identifier and integration identifier. For example:"
+    ]
+    "aws:apigatewayv2/integrationResponse:IntegrationResponse", [
+        "Using <code>pulumi import</code>, import <code>aws_apigatewayv2_integration_response</code> using the API identifier, integration identifier and integration response identifier. For example:"
+    ]
+    "aws:apigatewayv2/model:Model", [
+        "Using <code>pulumi import</code>, import <code>aws_apigatewayv2_model</code> using the API identifier and model identifier. For example:"
+    ]
+    "aws:apigatewayv2/route:Route", [
+        "Using <code>pulumi import</code>, import <code>aws_apigatewayv2_route</code> using the API identifier and route identifier. For example:"
+    ]
+    "aws:apigatewayv2/routeResponse:RouteResponse", [
+        "Using <code>pulumi import</code>, import <code>aws_apigatewayv2_route_response</code> using the API identifier, route identifier and route response identifier. For example:"
+    ]
+    "aws:apigatewayv2/stage:Stage", [
+        "Using <code>pulumi import</code>, import <code>aws_apigatewayv2_stage</code> using the API identifier and stage name. For example:"
+    ]
+    "aws:appautoscaling/policy:Policy", [
+        "Using <code>pulumi import</code>, import Application AutoScaling Policy using the <code>service-namespace</code> , <code>resource-id</code>, <code>scalable-dimension</code> and <code>policy-name</code> separated by <code>/</code>. For example:"
+    ]
+    "aws:appautoscaling/target:Target", [
+        "Using <code>pulumi import</code>, import Application AutoScaling Target using the <code>service-namespace</code> , <code>resource-id</code> and <code>scalable-dimension</code> separated by <code>/</code>. For example:"
+    ]
+    "aws:appconfig/deployment:Deployment", [
+        "Using <code>pulumi import</code>, import AppConfig Deployments using the application ID, environment ID, and deployment number separated by a slash (<code>/</code>). For example:"
+    ]
+    "aws:appconfig/hostedConfigurationVersion:HostedConfigurationVersion", [
+        "Using <code>pulumi import</code>, import AppConfig Hosted Configuration Versions using the application ID, configuration profile ID, and version number separated by a slash (<code>/</code>). For example:"
+    ]
+    "aws:appmesh/gatewayRoute:GatewayRoute", [
+        "Using <code>pulumi import</code>, import App Mesh gateway routes using <code>mesh_name</code> and <code>virtual_gateway_name</code> together with the gateway route&rsquo;s <code>name</code>. For example:"
+    ]
+    "aws:appmesh/route:Route", [
+        "Using <code>pulumi import</code>, import App Mesh virtual routes using <code>mesh_name</code> and <code>virtual_router_name</code> together with the route&rsquo;s <code>name</code>. For example:"
+    ]
+    "aws:appmesh/virtualGateway:VirtualGateway", [
+        "Using <code>pulumi import</code>, import App Mesh virtual gateway using <code>mesh_name</code> together with the virtual gateway&rsquo;s <code>name</code>. For example:"
+    ]
+    "aws:appmesh/virtualNode:VirtualNode", [
+        "Using <code>pulumi import</code>, import App Mesh virtual nodes using <code>mesh_name</code> together with the virtual node&rsquo;s <code>name</code>. For example:"
+    ]
+    "aws:appmesh/virtualRouter:VirtualRouter", [
+        "Using <code>pulumi import</code>, import App Mesh virtual routers using <code>mesh_name</code> together with the virtual router&rsquo;s <code>name</code>. For example:"
+    ]
+    "aws:appmesh/virtualService:VirtualService", [
+        "Using <code>pulumi import</code>, import App Mesh virtual services using <code>mesh_name</code> together with the virtual service&rsquo;s <code>name</code>. For example:"
+    ]
+    "aws:appstream/fleetStackAssociation:FleetStackAssociation", [
+        "Using <code>pulumi import</code>, import AppStream Stack Fleet Association using the <code>fleet_name</code> and <code>stack_name</code> separated by a slash (<code>/</code>). For example:"
+    ]
+    "aws:appstream/user:User", [
+        "Using <code>pulumi import</code>, import <code>aws_appstream_user</code> using the <code>user_name</code> and <code>authentication_type</code> separated by a slash (<code>/</code>). For example:"
+    ]
+    "aws:appstream/userStackAssociation:UserStackAssociation", [
+        "Using <code>pulumi import</code>, import AppStream User Stack Association using the <code>user_name</code>, <code>authentication_type</code>, and <code>stack_name</code>, separated by a slash (<code>/</code>). For example:"
+    ]
+    "aws:athena/preparedStatement:PreparedStatement", [
+        "Using <code>pulumi import</code>, import Athena Prepared Statement using the <code>WORKGROUP-NAME/STATEMENT-NAME</code>. For example:"
+    ]
+    "aws:autoscaling/lifecycleHook:LifecycleHook", [
+        "Using <code>pulumi import</code>, import AutoScaling Lifecycle Hooks using the role autoscaling_group_name and name separated by <code>/</code>. For example:"
+    ]
+    "aws:autoscaling/policy:Policy", [
+        "Using <code>pulumi import</code>, import AutoScaling scaling policy using the role autoscaling_group_name and name separated by <code>/</code>. For example:"
+    ]
+    "aws:autoscaling/schedule:Schedule", [
+        "Using <code>pulumi import</code>, import AutoScaling ScheduledAction using the <code>auto-scaling-group-name</code> and <code>scheduled-action-name</code>. For example:"
+    ]
+    "aws:autoscaling/tag:Tag", [
+        "Using <code>pulumi import</code>, import <code>aws_autoscaling_group_tag</code> using the ASG name and key, separated by a comma (<code>,</code>). For example:"
+    ]
+    "aws:cfg/organizationCustomPolicyRule:OrganizationCustomPolicyRule", [
+        "Using <code>pulumi import</code>, import a Config Organization Custom Policy Rule using the <code>name</code> argument. For example:"
+    ]
+    "aws:cloudformation/stackSet:StackSet", [
+        "Using <code>pulumi import</code>, import CloudFormation StackSets using the <code>name</code>. For example:"
+        "Using <code>pulumi import</code>, import CloudFormation StackSets when acting a delegated administrator in a member account using the <code>name</code> and <code>call_as</code> values separated by a comma (<code>,</code>). For example:"
+    ]
+    "aws:cloudformation/stackSetInstance:StackSetInstance", [
+        "Using <code>pulumi import</code>, import CloudFormation StackSet Instances that target an AWS Account ID using the StackSet name, target AWS account ID, and target AWS Region separated by commas (<code>,</code>). For example:"
+        "Using <code>pulumi import</code>, import CloudFormation StackSet Instances that target AWS Organizational Units using the StackSet name, a slash (<code>/</code>) separated list of organizational unit IDs, and target AWS Region separated by commas (<code>,</code>). For example:"
+        "Using <code>pulumi import</code>, import CloudFormation StackSet Instances when acting a delegated administrator in a member account using the StackSet name, target AWS account ID or slash (<code>/</code>) separated list of organizational unit IDs, target AWS Region and <code>call_as</code> value separated by commas (<code>,</code>). For example:"
+    ]
+    "aws:cloudwatch/eventPermission:EventPermission", [
+        "Using <code>pulumi import</code>, import EventBridge permissions using the <code>event_bus_name/statement_id</code> (if you omit <code>event_bus_name</code>, the <code>default</code> event bus will be used). For example:"
+    ]
+    "aws:cloudwatch/eventRule:EventRule", [
+        "Using <code>pulumi import</code>, import EventBridge Rules using the <code>event_bus_name/rule_name</code> (if you omit <code>event_bus_name</code>, the <code>default</code> event bus will be used). For example:"
+    ]
+    "aws:cloudwatch/eventTarget:EventTarget", [
+        "Using <code>pulumi import</code>, import EventBridge Targets using <code>event_bus_name/rule-name/target-id</code> (if you omit <code>event_bus_name</code>, the <code>default</code> event bus will be used). For example:"
+    ]
+    "aws:cloudwatch/logMetricFilter:LogMetricFilter", [
+        "Using <code>pulumi import</code>, import CloudWatch Log Metric Filter using the <code>log_group_name:name</code>. For example:"
+    ]
+    "aws:cloudwatch/logSubscriptionFilter:LogSubscriptionFilter", [
+        "Using <code>pulumi import</code>, import CloudWatch Logs subscription filter using the log group name and subscription filter name separated by <code>|</code>. For example:"
+    ]
+    "aws:codeguruprofiler/profilingGroup:ProfilingGroup", [
+        "Using <code>pulumi import</code>, import CodeGuru Profiler Profiling Group using the <code>id</code>. For example:"
+    ]
+    "aws:cognito/identityPoolProviderPrincipalTag:IdentityPoolProviderPrincipalTag", [
+        "Using <code>pulumi import</code>, import Cognito Identity Pool Roles Attachment using the Identity Pool ID and provider name. For example:"
+    ]
+    "aws:cognito/identityProvider:IdentityProvider", [
+        "Using <code>pulumi import</code>, import <code>aws_cognito_identity_provider</code> resources using their User Pool ID and Provider Name. For example:"
+    ]
+    "aws:cognito/managedUserPoolClient:ManagedUserPoolClient", [
+        "Using <code>pulumi import</code>, import Cognito User Pool Clients using the <code>id</code> of the Cognito User Pool and the <code>id</code> of the Cognito User Pool Client. For example:"
+    ]
+    "aws:cognito/resourceServer:ResourceServer", [
+        "Using <code>pulumi import</code>, import <code>aws_cognito_resource_server</code> using their User Pool ID and Identifier. For example:"
+    ]
+    "aws:cognito/user:User", [
+        "Using <code>pulumi import</code>, import Cognito User using the <code>user_pool_id</code>/<code>name</code> attributes concatenated. For example:"
+    ]
+    "aws:cognito/userGroup:UserGroup", [
+        "Using <code>pulumi import</code>, import Cognito User Groups using the <code>user_pool_id</code>/<code>name</code> attributes concatenated. For example:"
+    ]
+    "aws:cognito/userPoolClient:UserPoolClient", [
+        "Using <code>pulumi import</code>, import Cognito User Pool Clients using the <code>id</code> of the Cognito User Pool, and the <code>id</code> of the Cognito User Pool Client. For example:"
+    ]
+    "aws:cognito/userPoolUICustomization:UserPoolUICustomization", [
+        "Using <code>pulumi import</code>, import Cognito User Pool UI Customizations using the <code>user_pool_id</code> and <code>client_id</code> separated by <code>,</code>. For example:"
+    ]
+    "aws:connect/instanceStorageConfig:InstanceStorageConfig", [
+        "Using <code>pulumi import</code>, import Amazon Connect Instance Storage Configs using the <code>instance_id</code>, <code>association_id</code>, and <code>resource_type</code> separated by a colon (<code>:</code>). For example:"
+    ]
+    "aws:customerprofiles/profile:Profile", [
+        "Using <code>pulumi import</code>, import Amazon Customer Profiles Profile using the resource <code>id</code>. For example:"
+    ]
+    "aws:datazone/environmentBlueprintConfiguration:EnvironmentBlueprintConfiguration", [
+        "Using <code>pulumi import</code>, import DataZone Environment Blueprint Configuration using the <code>domain_id</code> and <code>environment_blueprint_id</code>, separated by a <code>/</code>. For example:"
+    ]
+    "aws:directconnect/gatewayAssociation:GatewayAssociation", [
+        "Using <code>pulumi import</code>, import Direct Connect gateway associations using <code>dx_gateway_id</code> together with <code>associated_gateway_id</code>. For example:"
+    ]
+    "aws:directoryservice/sharedDirectory:SharedDirectory", [
+        "Using <code>pulumi import</code>, import Directory Service Shared Directories using the owner directory ID/shared directory ID. For example:"
+    ]
+    "aws:directoryservice/trust:Trust", [
+        "Using <code>pulumi import</code>, import the Trust relationship using the directory ID and remote domain name, separated by a <code>/</code>. For example:"
+    ]
+    "aws:dynamodb/contributorInsights:ContributorInsights", [
+        "Using <code>pulumi import</code>, import <code>aws_dynamodb_contributor_insights</code> using the format <code>name:table_name/index:index_name</code>, followed by the account number. For example:"
+    ]
+    "aws:ec2/amiLaunchPermission:AmiLaunchPermission", [
+        "Using <code>pulumi import</code>, import AMI Launch Permissions using <code>[ACCOUNT-ID|GROUP-NAME|ORGANIZATION-ARN|ORGANIZATIONAL-UNIT-ARN]/IMAGE-ID</code>. For example:"
+    ]
+    "aws:ec2/localGatewayRoute:LocalGatewayRoute", [
+        "Using <code>pulumi import</code>, import <code>aws_ec2_local_gateway_route</code> using the EC2 Local Gateway Route Table identifier and destination CIDR block separated by underscores (<code>_</code>). For example:"
+    ]
+    "aws:ec2/managedPrefixListEntry:ManagedPrefixListEntry", [
+        "Using <code>pulumi import</code>, import prefix list entries using <code>prefix_list_id</code> and <code>cidr</code> separated by a comma (<code>,</code>). For example:"
+    ]
+    "aws:ec2/networkInterfaceSecurityGroupAttachment:NetworkInterfaceSecurityGroupAttachment", [
+        "Using <code>pulumi import</code>, import Network Interface Security Group attachments using the associated network interface ID and security group ID, separated by an underscore (<code>_</code>). For example:"
+    ]
+    "aws:ec2/volumeAttachment:VolumeAttachment", [
+        "Using <code>pulumi import</code>, import EBS Volume Attachments using <code>DEVICE_NAME:VOLUME_ID:INSTANCE_ID</code>. For example:"
+    ]
+    "aws:ec2/vpcEndpointConnectionAccepter:VpcEndpointConnectionAccepter", [
+        "Using <code>pulumi import</code>, import VPC Endpoint Services using ID of the connection, which is the <code>VPC Endpoint Service ID</code> and <code>VPC Endpoint ID</code> separated by underscore (<code>_</code>).. For example:"
+    ]
+    "aws:ec2/vpcEndpointRouteTableAssociation:VpcEndpointRouteTableAssociation", [
+        "Using <code>pulumi import</code>, import VPC Endpoint Route Table Associations using <code>vpc_endpoint_id</code> together with <code>route_table_id</code>. For example:"
+    ]
+    "aws:ec2/vpcEndpointSubnetAssociation:VpcEndpointSubnetAssociation", [
+        "Using <code>pulumi import</code>, import VPC Endpoint Subnet Associations using <code>vpc_endpoint_id</code> together with <code>subnet_id</code>. For example:"
+    ]
+    "aws:ec2/vpcIpamPoolCidr:VpcIpamPoolCidr", [
+        "Using <code>pulumi import</code>, import IPAMs using the <code>&lt;cidr>_&lt;ipam-pool-id></code>. For example:"
+    ]
+    "aws:ec2/vpcIpamPoolCidrAllocation:VpcIpamPoolCidrAllocation", [
+        "Using <code>pulumi import</code>, import IPAM allocations using the allocation <code>id</code> and <code>pool id</code>, separated by <code>_</code>. For example:"
+    ]
+    "aws:ec2clientvpn/route:Route", [
+        "Using <code>pulumi import</code>, import AWS Client VPN routes using the endpoint ID, target subnet ID, and destination CIDR block. All values are separated by a <code>,</code>. For example:"
+    ]
+    "aws:ec2transitgateway/policyTableAssociation:PolicyTableAssociation", [
+        "Using <code>pulumi import</code>, import <code>aws_ec2_transit_gateway_policy_table_association</code> using the EC2 Transit Gateway Policy Table identifier, an underscore, and the EC2 Transit Gateway Attachment identifier. For example:"
+    ]
+    "aws:ec2transitgateway/prefixListReference:PrefixListReference", [
+        "Using <code>pulumi import</code>, import <code>aws_ec2_transit_gateway_prefix_list_reference</code> using the EC2 Transit Gateway Route Table identifier and EC2 Prefix List identifier, separated by an underscore (<code>_</code>). For example:"
+    ]
+    "aws:ec2transitgateway/route:Route", [
+        "Using <code>pulumi import</code>, import <code>aws_ec2_transit_gateway_route</code> using the EC2 Transit Gateway Route Table, an underscore, and the destination. For example:"
+    ]
+    "aws:ec2transitgateway/routeTableAssociation:RouteTableAssociation", [
+        "Using <code>pulumi import</code>, import <code>aws_ec2_transit_gateway_route_table_association</code> using the EC2 Transit Gateway Route Table identifier, an underscore, and the EC2 Transit Gateway Attachment identifier. For example:"
+    ]
+    "aws:ec2transitgateway/routeTablePropagation:RouteTablePropagation", [
+        "Using <code>pulumi import</code>, import <code>aws_ec2_transit_gateway_route_table_propagation</code> using the EC2 Transit Gateway Route Table identifier, an underscore, and the EC2 Transit Gateway Attachment identifier. For example:"
+    ]
+    "aws:ecs/service:Service", [
+        "Using <code>pulumi import</code>, import ECS services using the <code>name</code> together with ecs cluster <code>name</code>. For example:"
+    ]
+    "aws:eks/accessEntry:AccessEntry", [
+        "Using <code>pulumi import</code>, import EKS access entry using the <code>cluster_name</code> and <code>principal_arn</code> separated by a colon (<code>:</code>). For example:"
+    ]
+    "aws:eks/accessPolicyAssociation:AccessPolicyAssociation", [
+        "Using <code>pulumi import</code>, import EKS access entry using the <code>cluster_name</code> <code>principal_arn</code> and <code>policy_arn</code> separated by a colon (<code>#</code>). For example:"
+    ]
+    "aws:eks/addon:Addon", [
+        "Using <code>pulumi import</code>, import EKS add-on using the <code>cluster_name</code> and <code>addon_name</code> separated by a colon (<code>:</code>). For example:"
+    ]
+    "aws:eks/fargateProfile:FargateProfile", [
+        "Using <code>pulumi import</code>, import EKS Fargate Profiles using the <code>cluster_name</code> and <code>fargate_profile_name</code> separated by a colon (<code>:</code>). For example:"
+    ]
+    "aws:eks/identityProviderConfig:IdentityProviderConfig", [
+        "Using <code>pulumi import</code>, import EKS Identity Provider Configurations using the <code>cluster_name</code> and <code>identity_provider_config_name</code> separated by a colon (<code>:</code>). For example:"
+    ]
+    "aws:eks/nodeGroup:NodeGroup", [
+        "Using <code>pulumi import</code>, import EKS Node Groups using the <code>cluster_name</code> and <code>node_group_name</code> separated by a colon (<code>:</code>). For example:"
+    ]
+    "aws:emr/instanceFleet:InstanceFleet", [
+        "Using <code>pulumi import</code>, import EMR Instance Fleet using the EMR Cluster identifier and Instance Fleet identifier separated by a forward slash (<code>/</code>). For example:"
+    ]
+    "aws:emr/instanceGroup:InstanceGroup", [
+        "Using <code>pulumi import</code>, import EMR task instance group using their EMR Cluster id and Instance Group id separated by a forward-slash <code>/</code>. For example:"
+    ]
+    "aws:fms/resourceSet:ResourceSet", [
+        "Using <code>pulumi import</code>, import FMS (Firewall Manager) Resource Set using the <code>id</code>. For example:"
+    ]
+    "aws:glue/catalogDatabase:CatalogDatabase", [
+        "Using <code>pulumi import</code>, import Glue Catalog Databases using the <code>catalog_id:name</code>. If you have not set a Catalog ID specify the AWS Account ID that the database is in. For example:"
+    ]
+    "aws:glue/userDefinedFunction:UserDefinedFunction", [
+        "Using <code>pulumi import</code>, import Glue User Defined Functions using the <code>catalog_id:database_name:function_name</code>. If you have not set a Catalog ID specify the AWS Account ID that the database is in. For example:"
+    ]
+    "aws:iam/groupPolicy:GroupPolicy", [
+        "Using <code>pulumi import</code>, import IAM Group Policies using the <code>group_name:group_policy_name</code>. For example:"
+    ]
+    "aws:iam/rolePolicy:RolePolicy", [
+        "Using <code>pulumi import</code>, import IAM Role Policies using the <code>role_name:role_policy_name</code>. For example:"
+    ]
+    "aws:iam/userGroupMembership:UserGroupMembership", [
+        "Using <code>pulumi import</code>, import IAM user group membership using the user name and group names separated by <code>/</code>. For example:"
+    ]
+    "aws:iam/userPolicy:UserPolicy", [
+        "Using <code>pulumi import</code>, import IAM User Policies using the <code>user_name:user_policy_name</code>. For example:"
+    ]
+    "aws:identitystore/group:Group", [
+        "Using <code>pulumi import</code>, import an Identity Store Group using the combination <code>identity_store_id/group_id</code>. For example:"
+    ]
+    "aws:identitystore/groupMembership:GroupMembership", [
+        "Using <code>pulumi import</code>, import <code>aws_identitystore_group_membership</code> using the <code>identity_store_id/membership_id</code>. For example:"
+    ]
+    "aws:identitystore/user:User", [
+        "Using <code>pulumi import</code>, import an Identity Store User using the combination <code>identity_store_id/user_id</code>. For example:"
+    ]
+    "aws:iot/thingGroupMembership:ThingGroupMembership", [
+        "Using <code>pulumi import</code>, import IoT Thing Group Membership using the thing group name and thing name. For example:"
+    ]
+    "aws:kendra/dataSource:DataSource", [
+        "Using <code>pulumi import</code>, import Kendra Data Source using the unique identifiers of the data_source and index separated by a slash (<code>/</code>). For example:"
+    ]
+    "aws:kendra/experience:Experience", [
+        "Using <code>pulumi import</code>, import Kendra Experience using the unique identifiers of the experience and index separated by a slash (<code>/</code>). For example:"
+    ]
+    "aws:kendra/faq:Faq", [
+        "Using <code>pulumi import</code>, import <code>aws_kendra_faq</code> using the unique identifiers of the FAQ and index separated by a slash (<code>/</code>). For example:"
+    ]
+    "aws:kendra/querySuggestionsBlockList:QuerySuggestionsBlockList", [
+        "Using <code>pulumi import</code>, import the <code>aws_kendra_query_suggestions_block_list</code> resource using the unique identifiers of the block list and index separated by a slash (<code>/</code>). For example:"
+    ]
+    "aws:kendra/thesaurus:Thesaurus", [
+        "Using <code>pulumi import</code>, import <code>aws_kendra_thesaurus</code> using the unique identifiers of the thesaurus and index separated by a slash (<code>/</code>). For example:"
+    ]
+    "aws:keyspaces/table:Table", [
+        "Using <code>pulumi import</code>, import a table using the <code>keyspace_name</code> and <code>table_name</code> separated by <code>/</code>. For example:"
+    ]
+    "aws:kinesisanalyticsv2/applicationSnapshot:ApplicationSnapshot", [
+        "Using <code>pulumi import</code>, import <code>aws_kinesisanalyticsv2_application</code> using <code>application_name</code> together with <code>snapshot_name</code>. For example:"
+    ]
+    "aws:kms/alias:Alias", [
+        "Using <code>pulumi import</code>, import KMS aliases using the <code>name</code>. For example:"
+    ]
+    "aws:lakeformation/dataCellsFilter:DataCellsFilter", [
+        "Using <code>pulumi import</code>, import Lake Formation Data Cells Filter using the <code>id</code>. For example:"
+    ]
+    "aws:lakeformation/lfTag:LfTag", [
+        "Using <code>pulumi import</code>, import Lake Formation LF-Tags using the <code>catalog_id:key</code>. If you have not set a Catalog ID specify the AWS Account ID that the database is in. For example:"
+    ]
+    "aws:lambda/alias:Alias", [
+        "Using <code>pulumi import</code>, import Lambda Function Aliases using the <code>function_name/alias</code>. For example:"
+    ]
+    "aws:lambda/permission:Permission", [
+        "Using <code>pulumi import</code>, import Lambda permission statements using function_name/statement_id with an optional qualifier. For example:"
+    ]
+    "aws:lambda/provisionedConcurrencyConfig:ProvisionedConcurrencyConfig", [
+        "Using <code>pulumi import</code>, import a Lambda Provisioned Concurrency Configuration using the <code>function_name</code> and <code>qualifier</code> separated by a comma (<code>,</code>). For example:"
+    ]
+    "aws:lex/v2modelsBotLocale:V2modelsBotLocale", [
+        "Using <code>pulumi import</code>, import Lex V2 Models Bot Locale using the <code>id</code>. For example:"
+    ]
+    "aws:lex/v2modelsIntent:V2modelsIntent", [
+        "Using <code>pulumi import</code>, import Lex V2 Models Intent using the <code>intent_id:bot_id:bot_version:locale_id</code>. For example:"
+    ]
+    "aws:lex/v2modelsSlotType:V2modelsSlotType", [
+        "Using <code>pulumi import</code>, import Lex V2 Models Slot Type using using a comma-delimited string concatenating <code>bot_id</code>, <code>bot_version</code>, <code>locale_id</code>, and <code>slot_type_id</code>. For example:"
+    ]
+    "aws:lightsail/containerServiceDeploymentVersion:ContainerServiceDeploymentVersion", [
+        "Using <code>pulumi import</code>, import Lightsail Container Service Deployment Version using the <code>service_name</code> and <code>version</code> separated by a slash (<code>/</code>). For example:"
+    ]
+    "aws:lightsail/instance:Instance", [
+        "Using <code>pulumi import</code>, import Lightsail Instances using their name. For example:"
+    ]
+    "aws:location/trackerAssociation:TrackerAssociation", [
+        "Using <code>pulumi import</code>, import Location Tracker Association using the <code>tracker_name|consumer_arn</code>. For example:"
+    ]
+    "aws:medialive/multiplexProgram:MultiplexProgram", [
+        "Using <code>pulumi import</code>, import MediaLive MultiplexProgram using the <code>id</code>, or a combination of &ldquo;<code>program_name</code>/<code>multiplex_id</code>&rdquo;. For example:"
+    ]
+    "aws:opensearch/serverlessAccessPolicy:ServerlessAccessPolicy", [
+        "Using <code>pulumi import</code>, import OpenSearchServerless Access Policy using the <code>name</code> and <code>type</code> arguments separated by a slash (<code>/</code>). For example:"
+    ]
+    "aws:opensearch/serverlessLifecyclePolicy:ServerlessLifecyclePolicy", [
+        "Using <code>pulumi import</code>, import OpenSearch Serverless Lifecycle Policy using the <code>name</code> and <code>type</code> arguments separated by a slash (<code>/</code>). For example:"
+    ]
+    "aws:opensearch/serverlessSecurityConfig:ServerlessSecurityConfig", [
+        "Using <code>pulumi import</code>, import OpenSearchServerless Access Policy using the <code>name</code> argument prefixed with the string <code>saml/account_id/</code>. For example:"
+    ]
+    "aws:opensearch/serverlessSecurityPolicy:ServerlessSecurityPolicy", [
+        "Using <code>pulumi import</code>, import OpenSearchServerless Security Policy using the <code>name</code> and <code>type</code> arguments separated by a slash (<code>/</code>). For example:"
+    ]
+    "aws:organizations/account:Account", [
+        "Using <code>pulumi import</code>, import the AWS member account using the <code>account_id</code>. For example:"
+    ]
+    "aws:organizations/delegatedAdministrator:DelegatedAdministrator", [
+        "Using <code>pulumi import</code>, import <code>aws_organizations_delegated_administrator</code> using the account ID and its service principal. For example:"
+    ]
+    "aws:paymentcryptography/keyAlias:KeyAlias", [
+        "Using <code>pulumi import</code>, import Payment Cryptography Control Plane Key Alias using the <code>alias/4681482429376900170</code>. For example:"
+    ]
+    "aws:quicksight/dataSource:DataSource", [
+        "Using <code>pulumi import</code>, import a QuickSight data source using the AWS account ID, and data source ID separated by a slash (<code>/</code>). For example:"
+    ]
+    "aws:quicksight/group:Group", [
+        "Using <code>pulumi import</code>, import QuickSight Group using the aws account id, namespace and group name separated by <code>/</code>. For example:"
+    ]
+    "aws:quicksight/groupMembership:GroupMembership", [
+        "Using <code>pulumi import</code>, import QuickSight Group membership using the AWS account ID, namespace, group name and member name separated by <code>/</code>. For example:"
+    ]
+    "aws:rds/customDbEngineVersion:CustomDbEngineVersion", [
+        "Using <code>pulumi import</code>, import custom engine versions for Amazon RDS custom using the <code>engine</code> and <code>engine_version</code> separated by a colon (<code>:</code>). For example:"
+    ]
+    "aws:rds/proxyEndpoint:ProxyEndpoint", [
+        "Using <code>pulumi import</code>, import DB proxy endpoints using the <code>DB-PROXY-NAME/DB-PROXY-ENDPOINT-NAME</code>. For example:"
+    ]
+    "aws:redshift/snapshotScheduleAssociation:SnapshotScheduleAssociation", [
+        "Using <code>pulumi import</code>, import Redshift Snapshot Schedule Association using the <code>&lt;cluster-identifier>/&lt;schedule-identifier></code>. For example:"
+    ]
+    "aws:route53/trafficPolicy:TrafficPolicy", [
+        "Using <code>pulumi import</code>, import Route53 Traffic Policy using the <code>id</code> and <code>version</code>. For example:"
+    ]
+    "aws:sagemaker/device:Device", [
+        "Using <code>pulumi import</code>, import SageMaker Devices using the <code>device-fleet-name/device-name</code>. For example:"
+    ]
+    "aws:sagemaker/featureGroup:FeatureGroup", [
+        "Using <code>pulumi import</code>, import Feature Groups using the <code>name</code>. For example:"
+    ]
+    "aws:scheduler/schedule:Schedule", [
+        "Using <code>pulumi import</code>, import schedules using the combination <code>group_name/name</code>. For example:"
+    ]
+    "aws:schemas/schema:Schema", [
+        "Using <code>pulumi import</code>, import EventBridge schema using the <code>name</code> and <code>registry_name</code>. For example:"
+    ]
+    "aws:servicediscovery/instance:Instance", [
+        "Using <code>pulumi import</code>, import Service Discovery Instance using the service ID and instance ID. For example:"
+    ]
+    "aws:servicequotas/serviceQuota:ServiceQuota", [
+        "Using <code>pulumi import</code>, import <code>aws_servicequotas_service_quota</code> using the service code and quota code, separated by a front slash (<code>/</code>). For example:"
+    ]
+    "aws:ses/eventDestination:EventDestination", [
+        "Using <code>pulumi import</code>, import SES event destinations using <code>configuration_set_name</code> together with the event destination&rsquo;s <code>name</code>. For example:"
+    ]
+    "aws:ses/receiptRule:ReceiptRule", [
+        "Using <code>pulumi import</code>, import SES receipt rules using the ruleset name and rule name separated by <code>:</code>. For example:"
+    ]
+    "aws:ses/receiptRuleSet:ReceiptRuleSet", [
+        "Using <code>pulumi import</code>, import SES receipt rule sets using the rule set name. For example:"
+    ]
+    "aws:sesv2/configurationSetEventDestination:ConfigurationSetEventDestination", [
+        "Using <code>pulumi import</code>, import SESv2 (Simple Email V2) Configuration Set Event Destination using the <code>id</code> (<code>configuration_set_name|event_destination_name</code>). For example:"
+    ]
+    "aws:sesv2/emailIdentityPolicy:EmailIdentityPolicy", [
+        "Using <code>pulumi import</code>, import SESv2 (Simple Email V2) Email Identity Policy using the <code>example_id_arg</code>. For example:"
+    ]
+    "aws:signer/signingProfile:SigningProfile", [
+        "Using <code>pulumi import</code>, import Signer signing profiles using the <code>name</code>. For example:"
+    ]
+    "aws:signer/signingProfilePermission:SigningProfilePermission", [
+        "Using <code>pulumi import</code>, import Signer signing profile permission statements using profile_name/statement_id. For example:"
+    ]
+    "aws:sqs/queuePolicy:QueuePolicy", [
+        "Using <code>pulumi import</code>, import SQS Queue Policies using the queue URL. For example:"
+    ]
+    "aws:sqs/redriveAllowPolicy:RedriveAllowPolicy", [
+        "Using <code>pulumi import</code>, import SQS Queue Redrive Allow Policies using the queue URL. For example:"
+    ]
+    "aws:sqs/redrivePolicy:RedrivePolicy", [
+        "Using <code>pulumi import</code>, import SQS Queue Redrive Policies using the queue URL. For example:"
+    ]
+    "aws:ssm/maintenanceWindowTarget:MaintenanceWindowTarget", [
+        "Using <code>pulumi import</code>, import SSM Maintenance Window targets using <code>WINDOW_ID/WINDOW_TARGET_ID</code>. For example:"
+    ]
+    "aws:ssm/maintenanceWindowTask:MaintenanceWindowTask", [
+        "Using <code>pulumi import</code>, import AWS Maintenance Window Task using the <code>window_id</code> and <code>window_task_id</code> separated by <code>/</code>. For example:"
+    ]
+    "aws:transfer/access:Access", [
+        "Using <code>pulumi import</code>, import Transfer Accesses using the <code>server_id</code> and <code>external_id</code>. For example:"
+    ]
+    "aws:transfer/agreement:Agreement", [
+        "Using <code>pulumi import</code>, import Transfer AS2 Agreement using the <code>server_id/agreement_id</code>. For example:"
+    ]
+    "aws:transfer/sshKey:SshKey", [
+        "Using <code>pulumi import</code>, import Transfer SSH Public Key using the <code>server_id</code> and <code>user_name</code> and <code>ssh_public_key_id</code> separated by <code>/</code>. For example:"
+    ]
+    "aws:transfer/user:User", [
+        "Using <code>pulumi import</code>, import Transfer Users using the <code>server_id</code> and <code>user_name</code> separated by <code>/</code>. For example:"
+    ]
+    "aws:verifiedaccess/instanceTrustProviderAttachment:InstanceTrustProviderAttachment", [
+        "Using <code>pulumi import</code>, import Verified Access Instance Trust Provider Attachments using the <code>verifiedaccess_instance_id</code> and <code>verifiedaccess_trust_provider_id</code> separated by a forward slash (<code>/</code>). For example:"
+    ]
+    "aws:vpclattice/listener:Listener", [
+        "Using <code>pulumi import</code>, import VPC Lattice Listener using the <code>listener_id</code> of the listener and the <code>id</code> of the VPC Lattice service combined with a <code>/</code> character. For example:"
+    ]
+    "aws:vpclattice/listenerRule:ListenerRule", [
+        "Using <code>pulumi import</code>, import VPC Lattice Listener Rule using the <code>id</code>. For example:"
+    ]
+    "aws:wafregional/webAclAssociation:WebAclAssociation", [
+        "Using <code>pulumi import</code>, import WAF Regional Web ACL Association using their <code>web_acl_id:resource_arn</code>. For example:"
+    ]
+    "aws:wafv2/ipSet:IpSet", [
+        "Using <code>pulumi import</code>, import WAFv2 IP Sets using <code>ID/name/scope</code>. For example:"
+    ]
+    "aws:wafv2/regexPatternSet:RegexPatternSet", [
+        "Using <code>pulumi import</code>, import WAFv2 Regex Pattern Sets using <code>ID/name/scope</code>. For example:"
+    ]
+]

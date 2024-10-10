@@ -713,7 +713,9 @@ let shouldCheckPropNameForReferenceProperty
         propName.EndsWith IdProperty || 
         propName.EndsWith ArnProperty || 
         propName.EndsWith "Name" ||
-        propName.EndsWith "Identifier"
+        propName.EndsWith "Identifier" ||
+        propName.EndsWith "Namespace" ||
+        propName.EndsWith "Dimension"
     match getImportIdentityParts resourceType with
     | Some(importIdentityParts) -> 
         hasIdentifierSuffix || Seq.contains propName importIdentityParts
@@ -909,24 +911,38 @@ let getImportIdsForVPCGatewayAttachments
     return data
 }
 
+let getSecurityGroupRuleIds 
+    (cloudformationResources: seq<AwsCloudFormationResource>) 
+    (region: string ) = task {
+    let data = Dictionary<string, seq<SecurityGroupRule>>()
+    let client = ec2Client region
+    let securityGroups = 
+            cloudformationResources
+            |> Seq.filter (fun resource -> resource.resourceType = "AWS::EC2::SecurityGroup")
+    for group in securityGroups do
+        let request = DescribeSecurityGroupRulesRequest()
+        let filters = List<Filter>([Filter("group-id",List<string>([group.resourceId]))])
+        request.Filters <- filters
+        let! response = client.DescribeSecurityGroupRulesAsync(request)
+        data.Add(group.resourceId, response.SecurityGroupRules)
+    return data
+}
+
 let getRemappedImportProps 
     (resource: AwsCloudFormationResource)
     (resourceData: Dictionary<string, Dictionary<string,string>>)
+    (resourceContext: AwsResourceContext)
     : Option<RemappedSpecResult> =      
     
     AwsCloudFormationTemplates.remapSpecifications
     |> Seq.tryFind (fun pair -> pair.Key = resource.resourceType)
     |> Option.map (fun pair -> pair.Value)
     |> Option.filter (fun spec -> spec.validatorFunc resource resourceData spec)
-    |> Option.map (fun spec -> spec.remapFunc resource resourceData spec)
+    |> Option.map (fun spec -> spec.remapFunc resource resourceData resourceContext spec)
 
 let getPulumiImportJson 
     (cloudformationResources: seq<AwsCloudFormationResource>) 
-    (loadBalancers: Map<string,LoadBalancer>)
-    (elasticIps: Map<string,Address>)
-    (routeTables: List<RouteTable>)
-    (iamPolicies: List<ManagedPolicy>)
-    (gatewayAttachmentImportIds: Dictionary<string,string>)
+    (resourceContext: AwsResourceContext)
     (resourceData: Dictionary<string, Dictionary<string,string>>)
     : JObject * ResizeArray<string> =
     // initialize return data
@@ -937,7 +953,7 @@ let getPulumiImportJson
     for resource in cloudformationResources do
         let resourceJson = JObject()
 
-        match getRemappedImportProps resource resourceData with
+        match getRemappedImportProps resource resourceData resourceContext with
         | Some (remappedSpecResult) -> 
             resourceJson.Add("type", remappedSpecResult.resourceType)
             resourceJson.Add("name", remappedSpecResult.logicalId)
@@ -946,7 +962,7 @@ let getPulumiImportJson
             // set the resource type
             if resource.resourceType = cloudFormationLoadBalancerType then
                 // special handling for load balancer type
-                match loadBalancers.TryGetValue resource.resourceId with
+                match resourceContext.loadBalancers.TryGetValue resource.resourceId with
                 | true, balancer when balancer.Type = LoadBalancerTypeEnum.Application ->
                     resourceJson.Add("type", "aws:alb/loadBalancer:LoadBalancer")
                 | _ ->
@@ -972,7 +988,7 @@ let getPulumiImportJson
                 let usagePlanKeyId = resource.resourceId.Replace(":", "/")
                 resourceJson.Add("id", usagePlanKeyId)
             elif resource.resourceType = "AWS::EC2::EIP" then
-                match elasticIps.TryGetValue resource.resourceId with
+                match resourceContext.elasticIps.TryGetValue resource.resourceId with
                 | true, eip ->
                     resourceJson.Add("id", eip.AllocationId)
                 | _ ->
@@ -980,7 +996,7 @@ let getPulumiImportJson
             elif resource.resourceType = "AWS::IAM::Policy" then
                 let id = resource.resourceId
                 let foundPolicy =
-                    iamPolicies
+                    resourceContext.iamPolicies
                     |> Seq.tryFind (fun policy -> policy.PolicyId = id || policy.PolicyName = id)
                 match foundPolicy with
                 | Some policy ->
@@ -988,7 +1004,7 @@ let getPulumiImportJson
                 | _ ->
                     resourceJson.Add("id", resource.resourceId)
             elif resource.resourceType = "AWS::EC2::VPCGatewayAttachment" then
-                match gatewayAttachmentImportIds.TryGetValue resource.logicalId with
+                match resourceContext.gatewayAttachmentImportIds.TryGetValue resource.logicalId with
                 | true, importId ->
                     resourceJson.Add("id", importId)
                 |_ ->
@@ -996,7 +1012,7 @@ let getPulumiImportJson
             elif resource.resourceType = routeTableAssociationType then
                 let routeTableAssociationId = resource.resourceId
                 let association =
-                    routeTables
+                    resourceContext.routeTables
                     |> Seq.collect (fun table -> table.Associations)
                     |> Seq.tryFind (fun association -> association.RouteTableAssociationId = routeTableAssociationId)
 
@@ -1065,13 +1081,20 @@ let getAwsCloudFormationResources (stack: AwsCloudFormationStack) = task {
         // get map of logical ids of vpc gateway attachments to import ids
         let! gatewayAttachmentImportIds = getImportIdsForVPCGatewayAttachments cloudformationResources stack.region
 
+        let! securityGroupRuleIds = getSecurityGroupRuleIds cloudformationResources stack.region
+
+        let resourceContext = {
+            loadBalancers = loadBalancers
+            elasticIps = elasticIps
+            routeTables = routeTables
+            iamPolicies = iamPolicies
+            gatewayAttachmentImportIds = gatewayAttachmentImportIds
+            securityGroupRuleIds = securityGroupRuleIds
+        }
+
         let (pulumiImportJson, errors) = getPulumiImportJson 
                                             cloudformationResources
-                                            loadBalancers
-                                            elasticIps
-                                            routeTables
-                                            iamPolicies
-                                            gatewayAttachmentImportIds
+                                            resourceContext
                                             resourceData
         return Ok {
             resources = List.ofSeq cloudformationResources

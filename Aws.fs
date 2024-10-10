@@ -22,28 +22,40 @@ type AwsImportSpec = {
     resourceType: string
     requiresArn: bool
     importInstructions: string list
+    importText: string list
 }
 
 let loadAwsImportSpec(resourceType: string, moduleName:string, resourceName:string) = task {
      try
-         let url = $"https://www.pulumi.com/registry/packages/aws/api-docs/{moduleName.ToLower()}/{resourceName.ToLower()}"
-         let web = HtmlWeb()
-         let! doc = web.LoadFromWebAsync(url)
-         let codeElements = doc.DocumentNode.DescendantsAndSelf()
-         let importInstructions =
-             codeElements
-             |> Seq.filter (fun element ->
-                 element.Name = "code"
-                 && element.InnerText <> null
-                 && element.InnerText.StartsWith("$ pulumi import"))
-             |> Seq.map (fun element -> element.InnerText)
-             |> Seq.toList
+        let url = $"https://www.pulumi.com/registry/packages/aws/api-docs/{moduleName.ToLower()}/{resourceName.ToLower()}"
+        let web = HtmlWeb()
+        let! doc = web.LoadFromWebAsync(url)
+        let codeElements = doc.DocumentNode.DescendantsAndSelf()
+        let importInstructions =
+            codeElements
+            |> Seq.filter (fun element ->
+                element.Name = "code"
+                && element.InnerText <> null
+                && element.InnerText.StartsWith("$ pulumi import"))
+            |> Seq.map (fun element -> element.InnerText)
+            |> Seq.toList
+        
+        let importText =
+            codeElements
+            |> Seq.filter (fun element ->
+                element.Name = "p"
+                && element.InnerHtml <> null
+                && element.InnerHtml.StartsWith("Using ")
+                && element.InnerHtml.EndsWith("For example:"))
+            |> Seq.map (fun element -> element.InnerHtml)
+            |> Seq.toList
 
-         return Some {
-             resourceType = resourceType
-             requiresArn = importInstructions |> List.exists (fun instruction -> instruction.Contains "arn:")
-             importInstructions = importInstructions
-         }
+        return Some {
+            resourceType = resourceType
+            requiresArn = importInstructions |> List.exists (fun instruction -> instruction.Contains "arn:")
+            importInstructions = importInstructions
+            importText = importText
+        }
      with
      | ex ->
          printfn $"Error while scraping import instructions for {resourceType}: {ex.Message}"
@@ -165,6 +177,20 @@ let generateLookupModule(schemaVersion) =
                 append $"        \"{instruction.TrimEnd()}\""
             append "    ]"
     append "]"
+
+    append ""
+    append $"// The following {oddlyFormattedImportSpecs.Length} resources could require an odd format to import"
+    append "// an odd format being something other than just the resource ID or resource ARN"
+    append ""
+    append "let resourceTextsWithOddImportFormat = Map.ofList ["
+    for spec in oddlyFormattedImportSpecs do
+        if spec.importText.Length > 0 then
+            append $"    \"{spec.resourceType}\", ["
+            for text in spec.importText do
+                append $"        \"{text.TrimEnd()}\""
+            append "    ]"
+    append "]"
+
     moduleBuilder.ToString()
 
 let lowerFirst (input: string) =
@@ -184,6 +210,7 @@ let cloudformationMappings = function
 | "ApplicationAutoScaling", "ScalableTarget" -> "appautoscaling", "target"
 | "Amplify", "Domain" -> "Amplify", "DomainAssociation"
 | "AutoScaling", "AutoScalingGroup" -> "Autoscaling", "Group"
+| "CloudFront", "CloudFrontOriginAccessIdentity" -> "cloudfront", "originAccessIdentity"
 | "SNS", "Topic" -> "sns", "TopicSubscription"
 | "EC2", "DHCPOptions" -> "EC2", "VpcDhcpOptions"
 | "EC2", "EC2Fleet" -> "EC2", "Fleet"
@@ -216,11 +243,14 @@ let cloudformationMappings = function
 | "ElasticLoadBalancingV2", "TargetGroup" -> "lb", "TargetGroup"
 | "ElasticLoadBalancingV2", "ListenerCertificate" -> "lb", "ListenerCertificate"
 | "ElasticLoadBalancingV2", "ListenerRule" -> "lb", "ListenerRule"
+| "Lambda", "EventInvokeConfig" -> "lambda", "FunctionEventInvokeConfig"
 | "Route53", "RecordSet" -> "route53", "Record"
 | "Route53", "HostedZone" -> "route53", "Zone"
 | "Route53Resolver", "ResolverEndpoint" -> "route53", "ResolverEndpoint"
 | "Route53Resolver", "ResolverRule" -> "route53", "ResolverRule"
 | "Route53Resolver", "ResolverRuleAssociation" -> "route53", "ResolverRuleAssociation"
+| "SNS", "Subscription" -> "sns", "TopicSubscription"
+| "SNS", "Topic" -> "sns", "Topic"
 | "CertificateManager", "Certificate" -> "acm", "Certificate"
 | "CloudWatch", "Alarm" -> "cloudwatch", "MetricAlarm"
 | moduleName, resourceType -> moduleName, resourceType
