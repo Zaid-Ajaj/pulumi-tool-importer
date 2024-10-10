@@ -26,7 +26,8 @@ let getRemappedImportProps = testList "getRemappedImportProps" [
                 resourceType = "boink"
         }
         let resourceData = Dictionary<string, Dictionary<string, string>>()
-        Expect.equal (getRemappedImportProps resource resourceData) None ""
+        let actual = getRemappedImportProps resource resourceData AwsResourceContext.Empty
+        Expect.equal actual None ""
     }
     test "resourceType in remapSpec with missing resourceData returns None" {
         let resource = {
@@ -35,7 +36,8 @@ let getRemappedImportProps = testList "getRemappedImportProps" [
                 resourceType = "AWS::ApiGateway::Deployment"
         }
         let resourceData = Dictionary<string, Dictionary<string, string>>()
-        Expect.equal (getRemappedImportProps resource resourceData) None ""
+        let actual = getRemappedImportProps resource resourceData AwsResourceContext.Empty
+        Expect.equal actual None ""
     }
     test "ApiGateway Deployment remaps with remapFromImportIdentityParts)" {
         let resource = {
@@ -52,7 +54,8 @@ let getRemappedImportProps = testList "getRemappedImportProps" [
             logicalId = "foo_foo"
             importId = "fonce/foo-foo"
         }
-        Expect.equal (getRemappedImportProps resource resourceData) (Some(expectedResult)) ""
+        let actual = getRemappedImportProps resource resourceData AwsResourceContext.Empty
+        Expect.equal actual (Some(expectedResult)) ""
     }
     test "ECS Service remaps with remapFromIdAsArn" {
         let logicalId = "myService"
@@ -69,7 +72,8 @@ let getRemappedImportProps = testList "getRemappedImportProps" [
             logicalId = "myService"
             importId = "dev2-environment-ECSCluster-2JDFODYBOS1/dev2-dropbeacon-ECSServiceV2-zFfDnUyTGIgg"
         } 
-        Expect.equal (getRemappedImportProps resource resourceData) (Some(expectedResult)) ""
+        let actual = getRemappedImportProps resource resourceData AwsResourceContext.Empty
+        Expect.equal actual (Some(expectedResult)) ""
     }
     test "DNS record remaps with remapFromImportIdentityPartsDNSRecord" {
         let logicalId = "myDNSRecord"
@@ -89,7 +93,8 @@ let getRemappedImportProps = testList "getRemappedImportProps" [
             logicalId = "myDNSRecord"
             importId = "hostedZoneId_name_type"
         } 
-        Expect.equal (getRemappedImportProps resource resourceData) (Some(expectedResult)) ""
+        let actual = getRemappedImportProps resource resourceData AwsResourceContext.Empty
+        Expect.equal actual (Some(expectedResult)) ""
 
         // also remaps correctly if SetIdentifier is present in data
         resourceData[logicalId].Add("SetIdentifier", "setIdentifier")
@@ -98,7 +103,8 @@ let getRemappedImportProps = testList "getRemappedImportProps" [
             logicalId = "myDNSRecord"
             importId = "hostedZoneId_name_type_setIdentifier"
         }
-        Expect.equal (getRemappedImportProps resource resourceData) (Some(expectedResultWithSetId)) ""
+        let actual = getRemappedImportProps resource resourceData AwsResourceContext.Empty
+        Expect.equal actual (Some(expectedResultWithSetId)) ""
     }
     test "Listener Certificate remaps with remapFromImportIdentityPartsListenerCertificate" {
         let logicalId = "myListenerCertificate"
@@ -117,7 +123,8 @@ let getRemappedImportProps = testList "getRemappedImportProps" [
             logicalId = "myListenerCertificate"
             importId = "listenerArn_certificateArn"
         } 
-        Expect.equal (getRemappedImportProps resource resourceData) (Some(expectedResult)) ""
+        let actual = getRemappedImportProps resource resourceData AwsResourceContext.Empty
+        Expect.equal actual (Some(expectedResult)) ""
     }
 ]
 
