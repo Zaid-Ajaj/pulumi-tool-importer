@@ -169,7 +169,6 @@ let filterSecurityGroupRules
             if entry.Key = "Id" then true
             elif props.ContainsKey entry.Key then
                 let prop = props.Property(entry.Key)
-                printfn "%A %A %A %A" id prop.Name (prop.Value.ToString()) data[prop.Name]
                 prop.Value.ToString() = data[prop.Name]
             else false
         ))
@@ -184,7 +183,6 @@ let remapSecurityGroupIngress
     let filteredRules = filterSecurityGroupRules data resourceContext.securityGroupIngressRules
     let importId =
         if not ((Seq.length filteredRules) = 1) then 
-            printfn "%A" (Seq.length filteredRules)
             ""
         else (Seq.exactlyOne filteredRules).Key
     
@@ -206,7 +204,6 @@ let remapSecurityGroupEgress
     let filteredRules = filterSecurityGroupRules data resourceContext.securityGroupEgressRules
     let importId =
         if not ((Seq.length filteredRules) = 1) then 
-            printfn "%A" (Seq.length filteredRules)
             ""
         else (Seq.exactlyOne filteredRules).Key
     
