@@ -22,6 +22,15 @@ type AwsResourceContext = {
     gatewayAttachmentImportIds: Dictionary<string,string>
     securityGroupRuleIds: Dictionary<string, seq<SecurityGroupRule>>
 }
+  with 
+    static member Empty = {
+        loadBalancers = Map.empty
+        elasticIps = Map.empty
+        routeTables = ResizeArray []
+        iamPolicies = ResizeArray []
+        gatewayAttachmentImportIds = Dictionary()
+        securityGroupRuleIds = Dictionary()
+    }
 
 type CustomRemapSpecification = {
     pulumiType: string
