@@ -730,6 +730,91 @@ let shouldCheckPropNameForReferenceProperty
     | _ -> 
         hasIdentifierSuffix
 
+let getResource
+    (identifier: string)
+    (typeName: string)
+    (region: string) = task {
+    let client = cloudControlApiClient region
+    let request = GetResourceRequest()
+    request.Identifier <- identifier
+    request.TypeName <- typeName
+    let notFound = {
+        identifier = identifier
+        properties = JObject()
+    }
+    let! response = 
+        try
+            client.GetResourceAsync request
+        with
+        | ex -> task {
+            printfn "%A" ex
+            return GetResourceResponse()
+        }
+            
+
+    let properties = 
+        try 
+            JObject.Parse(response.ResourceDescription.Properties)
+        with
+        | ex ->
+            printfn "%A" ex
+            JObject()
+
+    let identifier = response.ResourceDescription.Identifier
+    return {
+        identifier = identifier
+        properties = properties
+    }
+}
+
+let rec resolveAttPath
+    (properties: JObject)
+    (attPath: seq<string>)
+    : string =
+    if (Seq.length attPath) = 1 then
+        let key = Seq.exactlyOne attPath
+        if properties.ContainsKey key then
+            let value = properties[key]
+            if value.Type = JTokenType.String || value.Type = JTokenType.Integer then
+                value.ToString()
+            else ""
+        else ""
+    elif (Seq.length attPath) = 0 then ""
+    else 
+        let key = Seq.head attPath
+        let rest = Seq.tail attPath
+        if properties[key].Type = JTokenType.Object then
+            let obj = properties[key].ToObject<JObject>()
+            resolveAttPath obj rest
+        else ""
+
+let resolveGetAttCloudControl
+    (identifier: string)
+    (targetAttPath: seq<string>)
+    (targetResourceType: string)
+    (region: string)
+    : Task<string> = task {
+    let! resourceDescription = getResource identifier targetResourceType region
+    return resolveAttPath resourceDescription.properties targetAttPath
+}
+
+let resolveGetAtt
+    (targetLogicalId: string)
+    (targetAttPath: seq<string>)
+    (data: Dictionary<string, Dictionary<string,string>>)
+    = task {
+    let targetResourceData = data[targetLogicalId]
+    let targetResourceType = targetResourceData["resourceType"]
+    let region = data["AWS::Region"]["Id"]
+    let identifier = 
+        // different types have different identifier formats in the cloud control api
+        match targetResourceType with
+        | "AWS::RDS::DBCluster" -> targetResourceData[IdProperty]
+        | _ -> targetResourceData[IdProperty]
+    let! resolvedValue = resolveGetAttCloudControl identifier targetAttPath targetResourceType region
+    return resolvedValue 
+}
+
 let rec resolveTokenValue
     (data: Dictionary<string, Dictionary<string,string>>)
     (stackExports: Map<string,string>)
@@ -749,12 +834,19 @@ let rec resolveTokenValue
         // if the reference is to an attribute of another resource in the template...
         elif obj.ContainsKey "Fn::GetAtt" && obj["Fn::GetAtt"].Type = JTokenType.Array then
             let getAtt = obj["Fn::GetAtt"].ToObject<JArray>()
-            if getAtt.Count = 2 && getAtt[0].Type = JTokenType.String then
+            if getAtt.Count = 2 && getAtt[0].Type = JTokenType.String && getAtt[1].Type = JTokenType.String then
                 let referencedResourceLogicalId = getAtt[0].ToObject<string>()
+                let targetAttPath = getAtt[1].ToObject<string>()
+                let key = Seq.head (targetAttPath.Split("."))
                 if data.ContainsKey referencedResourceLogicalId then
-                    if data[referencedResourceLogicalId].ContainsKey IdProperty then
-                        data[referencedResourceLogicalId][IdProperty]
-                    else ""
+                    let targetResourceData = data[referencedResourceLogicalId]
+                    if (Seq.length targetAttPath) = 1 && targetResourceData.ContainsKey key then
+                        targetResourceData[key]
+                    else 
+                        String.concat "/" ["Fn::GetAtt"; referencedResourceLogicalId; targetAttPath]
+                    // if data[referencedResourceLogicalId].ContainsKey IdProperty then
+                    //     data[referencedResourceLogicalId][IdProperty]
+                    // else ""
                 else ""
             else ""
 
@@ -810,7 +902,7 @@ let templateBodyData
     (cloudformationTemplate: GetTemplateResponse) 
     (resources: seq<AwsCloudFormationResource>) 
     (stackExports: Map<string,string>)
-    (region: string) =
+    (region: string) = 
     let data = Dictionary<string, Dictionary<string, string>>()
     // convert cloudformation template body to JObject
     let bodyJson =
@@ -834,19 +926,42 @@ let templateBodyData
     // TODO: since this loops over the template, instead of the filtered resource list,
     // will this function add entries for skipped resources to the return data?
     for property in resourcesFromTemplate.Properties() do
-        // property.Name is cfn logical id
-        let resourceId = property.Name
-        let resource = getJObject resourceId resourcesFromTemplate
+        let logicalId = property.Name
+        let resource = getJObject logicalId resourcesFromTemplate
         let resourceType = ((resource["Type"]).ToString())
         let properties = getJObject "Properties" resource
+        
+        if not (data.ContainsKey logicalId) then data.Add(logicalId, Dictionary<string, string>())
+        data[logicalId].Add("resourceType", resourceType)
 
         for property in properties.Properties() do
             if shouldCheckPropNameForReferenceProperty property.Name resourceType then
                 let referenceValue = resolveTokenValue data stackExports property.Value
-                if not (data.ContainsKey resourceId) then data.Add(resourceId, Dictionary<string, string>())
-                data[resourceId].Add(property.Name, referenceValue)
+                data[logicalId].Add(property.Name, referenceValue)
                 
     data, bodyJson
+
+let resolveFnGetAtt
+    (data: Dictionary<string, Dictionary<string,string>>) 
+    = task {
+        let toUpdate = List<List<string>>()
+        for resource in data do
+            for property in resource.Value do
+                // printfn "%A %A %A" resource.Key property.Key property.Value
+                if property.Value.StartsWith("Fn::GetAtt") then
+                    let parts = property.Value.Split("/")
+                    if Seq.length parts = 3 then
+                        let targetLogicalId = parts[1]
+                        let targetAttPath = parts[2].Split(".")
+                        let! resolvedValue = resolveGetAtt targetLogicalId targetAttPath data
+                        printfn "%A %A %A" targetLogicalId targetAttPath resolvedValue
+                        if not (resolvedValue = "") then
+                            toUpdate.Add(List([resource.Key; property.Key; resolvedValue]))
+        for entry in toUpdate do
+            data[entry[0]].Remove(entry[1]) |> ignore
+            data[entry[0]].Add(entry[1], entry[2])
+    }
+
 
 let routeTableAssociationType = "AWS::EC2::SubnetRouteTableAssociation"
 let cloudFormationLoadBalancerType = "AWS::ElasticLoadBalancingV2::LoadBalancer"
@@ -1104,6 +1219,9 @@ let getAwsCloudFormationResources (stack: AwsCloudFormationStack) = task {
 
         // get resource dependency map and cfn template as JObject
         let resourceData, bodyJson = templateBodyData stackTemplate cloudformationResources stackExports stack.region
+
+        // resolve Fn::GetAtt
+        let! _ = resolveFnGetAtt resourceData
 
         // get set of resource types
         let resourceTypes = Set [ for resource in cloudformationResources -> resource.resourceType ]

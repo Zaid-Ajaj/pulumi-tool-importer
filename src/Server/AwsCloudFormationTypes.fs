@@ -39,5 +39,10 @@ type RemapSpecification = {
     importIdentityParts: string list
 }
 
+type CloudControlResourceDescription = {
+    identifier: string
+    properties: JObject
+}
+
 
 

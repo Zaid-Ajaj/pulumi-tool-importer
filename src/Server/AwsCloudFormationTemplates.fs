@@ -166,7 +166,7 @@ let filterSecurityGroupRules
     |> Map.filter (fun id props ->
         data
         |> Seq.forall (fun entry ->
-            if entry.Key = "Id" then true
+            if entry.Key = "Id" || entry.Key = "resourceType" then true
             elif props.ContainsKey entry.Key then
                 let prop = props.Property(entry.Key)
                 prop.Value.ToString() = data[prop.Name]
@@ -270,6 +270,14 @@ let remapSpecifications = Map.ofList [
         validatorFunc = validateFromImportIdentityParts
     }
 
+    "AWS::Cognito::UserPoolClient" => {
+        pulumiType = getPulumiType "AWS::Cognito::UserPoolClient"
+        importIdentityParts = ["UserPoolId"; "Id"]
+        delimiter = "/"
+        remapFunc = remapFromImportIdentityParts
+        validatorFunc = validateFromImportIdentityParts
+    }
+
     "AWS::EC2::SubnetRouteTableAssociation" => {
         pulumiType = getPulumiType "AWS::EC2::SubnetRouteTableAssociation"
         importIdentityParts = ["SubnetId"; "RouteTableId"]
@@ -355,6 +363,14 @@ let remapSpecifications = Map.ofList [
         pulumiType = getPulumiType "AWS::S3::BucketPolicy"
         importIdentityParts = ["Bucket"]
         delimiter = "/"
+        remapFunc = remapFromImportIdentityParts
+        validatorFunc = validateFromImportIdentityParts
+    }
+
+    "AWS::SQS::QueuePolicy" => {
+        pulumiType = getPulumiType "AWS::SQS::QueuePolicy"
+        importIdentityParts = ["Queues"]
+        delimiter = ""
         remapFunc = remapFromImportIdentityParts
         validatorFunc = validateFromImportIdentityParts
     }

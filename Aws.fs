@@ -249,8 +249,11 @@ let cloudformationMappings = function
 | "Route53Resolver", "ResolverEndpoint" -> "route53", "ResolverEndpoint"
 | "Route53Resolver", "ResolverRule" -> "route53", "ResolverRule"
 | "Route53Resolver", "ResolverRuleAssociation" -> "route53", "ResolverRuleAssociation"
-| "SNS", "Subscription" -> "sns", "TopicSubscription"
+| "RDS", "DBCluster" -> "rds", "Cluster"
+| "RDS", "DBInstance" -> "rds", "Instance"
+| "RDS", "DBSubnetGroup" -> "rds", "SubnetGroup"
 | "SNS", "Topic" -> "sns", "Topic"
+| "SNS", "Subscription" -> "sns", "TopicSubscription"
 | "CertificateManager", "Certificate" -> "acm", "Certificate"
 | "CloudWatch", "Alarm" -> "cloudwatch", "MetricAlarm"
 | moduleName, resourceType -> moduleName, resourceType
