@@ -738,10 +738,7 @@ let getResource
     let request = GetResourceRequest()
     request.Identifier <- identifier
     request.TypeName <- typeName
-    let notFound = {
-        identifier = identifier
-        properties = JObject()
-    }
+   
     let! response = 
         try
             client.GetResourceAsync request
@@ -751,7 +748,6 @@ let getResource
             return GetResourceResponse()
         }
             
-
     let properties = 
         try 
             JObject.Parse(response.ResourceDescription.Properties)
@@ -767,6 +763,14 @@ let getResource
     }
 }
 
+// Fn::GetAtt can accept a nested attribute path as its second argument, delimited by '.', so this
+// function recursively resolves them.
+// For ex:
+//
+// "Fn::GetAtt": [
+//     "SessionStorageECCluster",
+//     "PrimaryEndPoint.Port"
+// ]
 let rec resolveAttPath
     (properties: JObject)
     (attPath: seq<string>)
@@ -806,10 +810,11 @@ let resolveGetAtt
     let targetResourceData = data[targetLogicalId]
     let targetResourceType = targetResourceData["resourceType"]
     let region = data["AWS::Region"]["Id"]
+    // resources of many types are identified in the cloud control api by the physical id, 
+    // but some use an id concatenated from multiple properties, so rules for non-standard types
+    // can be added here
     let identifier = 
-        // different types have different identifier formats in the cloud control api
         match targetResourceType with
-        | "AWS::RDS::DBCluster" -> targetResourceData[IdProperty]
         | _ -> targetResourceData[IdProperty]
     let! resolvedValue = resolveGetAttCloudControl identifier targetAttPath targetResourceType region
     return resolvedValue 
@@ -843,10 +848,9 @@ let rec resolveTokenValue
                     if (Seq.length targetAttPath) = 1 && targetResourceData.ContainsKey key then
                         targetResourceData[key]
                     else 
+                    // if the Fn::GetAtt cannot be resolved from existing resource data, return
+                    // a special value to be resolved later by api
                         String.concat "/" ["Fn::GetAtt"; referencedResourceLogicalId; targetAttPath]
-                    // if data[referencedResourceLogicalId].ContainsKey IdProperty then
-                    //     data[referencedResourceLogicalId][IdProperty]
-                    // else ""
                 else ""
             else ""
 
@@ -870,11 +874,12 @@ let rec resolveTokenValue
             else ""
 
         // for edge cases where the reference property is buried in a (seemingly unnecessary)
-        // nested object with one property, like in "AWS::ElasticLoadBalancingV2::ListenerCertificate"
+        // nested object with one property, like in "AWS::ElasticLoadBalancingV2::ListenerCertificate":
+        //
         // "Certificates": [
         //   {
         //     "CertificateArn": {
-        //       "Fn::ImportValue": "dev2-KyruusV2CertificateArn"
+        //       "Fn::ImportValue": "mybiz-certificate-arn"
         //     }
         //   }
         // ]
@@ -1063,7 +1068,7 @@ let resourceTypeInTemplate
         |> Seq.length
     count > 0
 
-let listResources
+let listResourcesIfInTemplate
     (cloudformationResources: seq<AwsCloudFormationResource>)
     (typeName: string)
     (region: string) = task {
@@ -1220,8 +1225,8 @@ let getAwsCloudFormationResources (stack: AwsCloudFormationStack) = task {
         // get resource dependency map and cfn template as JObject
         let resourceData, bodyJson = templateBodyData stackTemplate cloudformationResources stackExports stack.region
 
-        // resolve Fn::GetAtt
-        let! _ = resolveFnGetAtt resourceData
+        // resolve remaining Fn::GetAtt by api
+        do! resolveFnGetAtt resourceData
 
         // get set of resource types
         let resourceTypes = Set [ for resource in cloudformationResources -> resource.resourceType ]
@@ -1242,9 +1247,9 @@ let getAwsCloudFormationResources (stack: AwsCloudFormationStack) = task {
         // get map of logical ids of vpc gateway attachments to import ids
         let! gatewayAttachmentImportIds = getImportIdsForVPCGatewayAttachments cloudformationResources stack.region
 
-        let! securityGroupIngressRules = listResources cloudformationResources "AWS::EC2::SecurityGroupIngress" stack.region
+        let! securityGroupIngressRules = listResourcesIfInTemplate cloudformationResources "AWS::EC2::SecurityGroupIngress" stack.region
 
-        let! securityGroupEgressRules = listResources cloudformationResources "AWS::EC2::SecurityGroupEgress" stack.region
+        let! securityGroupEgressRules = listResourcesIfInTemplate cloudformationResources "AWS::EC2::SecurityGroupEgress" stack.region
         
         let resourceContext = {
             loadBalancers = loadBalancers
