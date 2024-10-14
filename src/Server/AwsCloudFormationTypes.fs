@@ -24,6 +24,16 @@ type AwsResourceContext = {
     securityGroupIngressRules: Map<string,JObject>
     securityGroupEgressRules: Map<string,JObject>
 }
+    with  
+        static member Empty = {
+            loadBalancers = Map.empty
+            elasticIps = Map.empty
+            routeTables = ResizeArray()
+            iamPolicies = ResizeArray()
+            gatewayAttachmentImportIds = Dictionary()
+            securityGroupIngressRules = Map.empty
+            securityGroupEgressRules = Map.empty
+        }
 
 type CustomRemapSpecification = {
     pulumiType: string
