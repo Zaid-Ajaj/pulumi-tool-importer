@@ -937,7 +937,7 @@ let mapToPulumi = function
 // | "AWS::OpenSearchServerless::SecurityConfig" -> Error "not found"
 // | "AWS::OpenSearchServerless::SecurityPolicy" -> Error "not found"
 // | "AWS::OpenSearchServerless::VpcEndpoint" -> Error "not found"
-// | "AWS::OpenSearchService::Domain" -> Error "not found"
+| "AWS::OpenSearchService::Domain" -> Some "aws:opensearch/domain:Domain"
 // | "AWS::OpsWorks::App" -> Error "not found"
 // | "AWS::OpsWorks::ElasticLoadBalancerAttachment" -> Error "not found"
 | "AWS::OpsWorks::Instance" -> Some "aws:opsworks/instance:Instance"
@@ -1322,4 +1322,4 @@ let mapToPulumi = function
 // | "Alexa::ASK::Skill" -> Error "not found"
 | _ -> None
 
-// Mapped number of types: 639 / 1314 (remaining: 675)
+// Mapped number of types: 640 / 1314 (remaining: 674)

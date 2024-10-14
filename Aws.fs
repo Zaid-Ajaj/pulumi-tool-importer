@@ -243,6 +243,8 @@ let cloudformationMappings = function
 | "ElasticLoadBalancingV2", "ListenerCertificate" -> "lb", "ListenerCertificate"
 | "ElasticLoadBalancingV2", "ListenerRule" -> "lb", "ListenerRule"
 | "Lambda", "EventInvokeConfig" -> "lambda", "FunctionEventInvokeConfig"
+| "Lambda", "LayerVersionPermission" -> "lambda", "LayerVersionPermission"
+| "OpenSearchService", "Domain" -> "opensearch", "Domain"
 | "Route53", "RecordSet" -> "route53", "Record"
 | "Route53", "HostedZone" -> "route53", "Zone"
 | "Route53Resolver", "ResolverEndpoint" -> "route53", "ResolverEndpoint"

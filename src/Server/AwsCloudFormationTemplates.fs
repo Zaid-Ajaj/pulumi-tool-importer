@@ -215,6 +215,28 @@ let remapSecurityGroupEgress
         importId = importId
     }
 
+let remapLayerVersionPermission
+    (resource: AwsCloudFormationResource)
+    (resourceData: Dictionary<string, Dictionary<string,string>>)
+    (resourceContext: AwsResourceContext)
+    (spec: CustomRemapSpecification) 
+    : RemappedSpecResult =
+    let data = resourceData[resource.logicalId]
+    let layerVersionArnParts = data["LayerVersionArn"].Split(":")
+    let layerVersionArnPartsLen = Seq.length layerVersionArnParts
+    let layerVersionIndex = layerVersionArnPartsLen - 1
+    let layerVersion = layerVersionArnParts[layerVersionIndex]
+    let layerArnParts = Seq.truncate layerVersionIndex layerVersionArnParts
+    let layerArn = String.concat ":" layerArnParts
+    let importId = String.concat spec.delimiter [layerArn; layerVersion] 
+    let resourceType = spec.pulumiType
+    let logicalId = resource.logicalId.Replace("-", "_")
+    {
+        resourceType = resourceType
+        logicalId = logicalId
+        importId = importId
+    }
+
 let remapSpecifications = Map.ofList [
     "AWS::ApiGateway::Resource" => {
         pulumiType = "aws:apigateway/resource:Resource"
@@ -340,6 +362,14 @@ let remapSpecifications = Map.ofList [
         importIdentityParts = ["FunctionName"; "Id"]
         delimiter = "/"
         remapFunc = remapFromImportIdentityParts
+        validatorFunc = validateFromImportIdentityParts
+    }
+
+    "AWS::Lambda::LayerVersionPermission" => {
+        pulumiType = getPulumiType "AWS::Lambda::LayerVersionPermission"
+        importIdentityParts = ["LayerVersionArn"]
+        delimiter = ","
+        remapFunc = remapLayerVersionPermission
         validatorFunc = validateFromImportIdentityParts
     }
 
