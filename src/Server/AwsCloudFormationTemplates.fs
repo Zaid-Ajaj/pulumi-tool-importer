@@ -237,6 +237,24 @@ let remapLayerVersionPermission
         importId = importId
     }
 
+let remapTransferServer
+    (resource: AwsCloudFormationResource)
+    (resourceData: Dictionary<string, Dictionary<string,string>>)
+    (resourceContext: AwsResourceContext)
+    (spec: CustomRemapSpecification) 
+    : RemappedSpecResult =
+    let data = resourceData[resource.logicalId]
+    let serverPhysicalIdParts = data["Id"].Split("/")
+    let serverId = serverPhysicalIdParts[1]
+    let importId = serverId
+    let resourceType = spec.pulumiType
+    let logicalId = resource.logicalId.Replace("-", "_")
+    {
+        resourceType = resourceType
+        logicalId = logicalId
+        importId = importId
+    }
+
 let remapSpecifications = Map.ofList [
     "AWS::ApiGateway::Resource" => {
         pulumiType = "aws:apigateway/resource:Resource"
@@ -401,6 +419,22 @@ let remapSpecifications = Map.ofList [
         pulumiType = getPulumiType "AWS::SQS::QueuePolicy"
         importIdentityParts = ["Queues"]
         delimiter = ""
+        remapFunc = remapFromImportIdentityParts
+        validatorFunc = validateFromImportIdentityParts
+    }
+
+    "AWS::Transfer::Server" => {
+        pulumiType = getPulumiType "AWS::Transfer::Server"
+        importIdentityParts = ["Id"]
+        delimiter = ""
+        remapFunc = remapTransferServer
+        validatorFunc = validateFromImportIdentityParts
+    }
+
+    "AWS::Transfer::User" => {
+        pulumiType = getPulumiType "AWS::Transfer::User"
+        importIdentityParts = ["ServerId"; "UserName"]
+        delimiter = "/"
         remapFunc = remapFromImportIdentityParts
         validatorFunc = validateFromImportIdentityParts
     }
