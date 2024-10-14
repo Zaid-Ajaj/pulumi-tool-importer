@@ -937,7 +937,7 @@ let mapToPulumi = function
 // | "AWS::OpenSearchServerless::SecurityConfig" -> Error "not found"
 // | "AWS::OpenSearchServerless::SecurityPolicy" -> Error "not found"
 // | "AWS::OpenSearchServerless::VpcEndpoint" -> Error "not found"
-// | "AWS::OpenSearchService::Domain" -> Error "not found"
+| "AWS::OpenSearchService::Domain" -> Some "aws:opensearch/domain:Domain"
 // | "AWS::OpsWorks::App" -> Error "not found"
 // | "AWS::OpsWorks::ElasticLoadBalancerAttachment" -> Error "not found"
 | "AWS::OpsWorks::Instance" -> Some "aws:opsworks/instance:Instance"
@@ -1014,16 +1014,16 @@ let mapToPulumi = function
 // | "AWS::RAM::Permission" -> Error "not found"
 | "AWS::RAM::ResourceShare" -> Some "aws:ram/resourceShare:ResourceShare"
 | "AWS::RDS::CustomDBEngineVersion" -> Some "aws:rds/customDbEngineVersion:CustomDbEngineVersion"
-// | "AWS::RDS::DBCluster" -> Error "not found"
+| "AWS::RDS::DBCluster" -> Some "aws:rds/cluster:Cluster"
 // | "AWS::RDS::DBClusterParameterGroup" -> Error "not found"
-// | "AWS::RDS::DBInstance" -> Error "not found"
+| "AWS::RDS::DBInstance" -> Some "aws:rds/instance:Instance"
 // | "AWS::RDS::DBParameterGroup" -> Error "not found"
 // | "AWS::RDS::DBProxy" -> Error "not found"
 // | "AWS::RDS::DBProxyEndpoint" -> Error "not found"
 // | "AWS::RDS::DBProxyTargetGroup" -> Error "not found"
 // | "AWS::RDS::DBSecurityGroup" -> Error "not found"
 // | "AWS::RDS::DBSecurityGroupIngress" -> Error "not found"
-// | "AWS::RDS::DBSubnetGroup" -> Error "not found"
+| "AWS::RDS::DBSubnetGroup" -> Some "aws:rds/subnetGroup:SubnetGroup"
 | "AWS::RDS::EventSubscription" -> Some "aws:rds/eventSubscription:EventSubscription"
 | "AWS::RDS::GlobalCluster" -> Some "aws:rds/globalCluster:GlobalCluster"
 // | "AWS::RDS::Integration" -> Error "not found"
@@ -1322,4 +1322,4 @@ let mapToPulumi = function
 // | "Alexa::ASK::Skill" -> Error "not found"
 | _ -> None
 
-// Mapped number of types: 633 / 1314 (remaining: 681)
+// Mapped number of types: 640 / 1314 (remaining: 674)
