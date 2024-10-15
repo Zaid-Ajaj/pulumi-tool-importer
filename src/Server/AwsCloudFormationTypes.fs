@@ -43,6 +43,8 @@ type CustomRemapSpecification = {
     validatorFunc: AwsCloudFormationResource -> Dictionary<string, Dictionary<string,string>> -> CustomRemapSpecification -> bool
 }
 
+type RemapFunction = AwsCloudFormationResource -> Dictionary<string,string> -> AwsResourceContext -> Result<RemappedSpecResult, string>
+
 type RemapSpecification = {
     pulumiType: string
     delimiter: string

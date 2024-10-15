@@ -1103,6 +1103,23 @@ let getRemappedImportProps
     |> Option.filter (fun spec -> spec.validatorFunc resource resourceData spec)
     |> Option.map (fun spec -> spec.remapFunc resource resourceData resourceContext spec)
 
+let getRemappedImportPropsV2
+    (resource: AwsCloudFormationResource)
+    (resourceData: Dictionary<string, Dictionary<string,string>>)
+    (resourceContext: AwsResourceContext)
+    : Option<RemappedSpecResult> =      
+    
+    AwsCloudFormationTemplates.remapSpecificationsV2
+    |> Map.tryFind resource.resourceType
+    |> Option.filter (fun _ -> resourceData.ContainsKey resource.logicalId)
+    |> Option.bind (fun remapFunc -> 
+        let data = resourceData[resource.logicalId]
+        match remapFunc resource data resourceContext with
+        | Ok remappedSpecResult -> Some remappedSpecResult
+        | Error remapError -> None // todo: log error or return it to user
+    ) 
+
+
 let getPulumiImportJson 
     (cloudformationResources: seq<AwsCloudFormationResource>) 
     (resourceContext: AwsResourceContext)

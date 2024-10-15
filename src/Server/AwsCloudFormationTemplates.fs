@@ -439,3 +439,55 @@ let remapSpecifications = Map.ofList [
         validatorFunc = validateFromImportIdentityParts
     }
 ]
+
+let requireParts (keys: string list) (data: Dictionary<string, string>) =
+    if keys |> List.forall (fun key -> data.ContainsKey key) then 
+        Ok data
+    else 
+        let missingKeys = 
+            keys 
+            |> List.filter (fun key -> not (data.ContainsKey key))
+            |> String.concat ", "
+        Error $"Missing required parts [{missingKeys}]"
+
+let defaultRemapParts (spec: RemapSpecification) : RemapFunction = 
+    fun resource resourceData context -> result {
+        let! data = requireParts spec.importIdentityParts resourceData
+        let parts = spec.importIdentityParts |> List.map (fun key -> data[key])
+        let importId = String.concat spec.delimiter parts
+        return {
+            importId = importId
+            logicalId = resource.logicalId.Replace("-", "_")
+            resourceType = spec.pulumiType
+        }
+    }
+
+let remapSpecificationsV2 : Map<string, RemapFunction> = Map.ofList [
+    "AWS::ApplicationAutoScaling::ScalingPolicy" => fun resource data context ->
+        result {
+            let pulumiType = getPulumiType "AWS::ApplicationAutoScaling::ScalingPolicy"
+            let! data = requireParts ["ScalingTargetId"; "PolicyName"] data
+            let! importId = 
+                let scalingTargetId = data["ScalingTargetId"]
+                match scalingTargetId.Split("|") with
+                | scalingTargetParts when scalingTargetParts.Length = 3 -> 
+                    scalingTargetParts
+                    |> Array.append [| data["PolicyName"] |]
+                    |> String.concat "/" 
+                    |> Ok
+                | _ -> 
+                    Error $"Invalid ScalingTargetId: {scalingTargetId}"
+
+            return {
+                importId = importId
+                logicalId = resource.logicalId.Replace("-", "_")
+                resourceType = pulumiType
+            }
+        }
+    
+    "AWS::Transfer::User" => defaultRemapParts {
+        pulumiType = getPulumiType "AWS::Transfer::User"
+        importIdentityParts = ["ServerId"; "UserName"]
+        delimiter = "/"
+    }
+]
