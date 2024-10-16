@@ -141,17 +141,17 @@ let resolveTokenValue = testList "resolveTokenValue" [
         data.Add("AWS::Region", Dictionary<string,string>())
         data["AWS::Region"].Add("Id","us-west-2")
         let stackExports = Map.ofList []
-        let jsonString = "{
-          \"Fn::Join\": [
-            \"/\",
+        let jsonString = """{
+          "Fn::Join": [
+            "/",
             [
-              \"dropbeacon.dev2.healthsparq.com.\",
+              "dropbeacon.dev2.healthsparq.com.",
               {
-                \"Ref\": \"AWS::Region\"
+                "Ref": "AWS::Region"
               }
             ]
           ]
-        }"
+        }"""
         let token = JObject.Parse(jsonString)
         Expect.equal (resolveTokenValue data stackExports token) "dropbeacon.dev2.healthsparq.com./us-west-2" ""
     }
@@ -160,23 +160,23 @@ let resolveTokenValue = testList "resolveTokenValue" [
         data.Add("resourceLogicalId", Dictionary<string,string>())
         data["resourceLogicalId"].Add("Name","resourcePhysicalId")
         let stackExports = Map.ofList ["importKey","importValue"]
-        let jsonString = "{
-          \"Fn::Join\": [
-            \"/\",
+        let jsonString = """{
+          "Fn::Join": [
+            "/",
             [
-              \"service\",
+              "service",
               {
-                \"Fn::ImportValue\": \"importKey\"
+                "Fn::ImportValue": "importKey"
               },
               {
-                \"Fn::GetAtt\": [
-                    \"resourceLogicalId\",
-                    \"Name\"
+                "Fn::GetAtt": [
+                    "resourceLogicalId",
+                    "Name"
                 ]
               }
             ]
           ]
-        }"
+        }"""
         let token = JObject.Parse(jsonString)
         let resolved = resolveTokenValue data stackExports token
         Expect.equal resolved "service/importValue/resourcePhysicalId" ""
@@ -186,24 +186,24 @@ let resolveTokenValue = testList "resolveTokenValue" [
 let templateBodyData = testList "templateBodyData" [
     test "AWS::ElasticLoadBalancingV2::ListenerCertificate with Fn::ImportValue" {
         let template = """
-{
-    "Resources": {
-      "ListenerCertificate": {
-        "Properties": {
-          "ListenerArn": "listenerArn",
-          "Certificates": [
-            {
-              "CertificateArn": {
-                "Fn::ImportValue": "imported-cert-arn-name"
-              }
+        {
+            "Resources": {
+                "ListenerCertificate": {
+                    "Properties": {
+                    "ListenerArn": "listenerArn",
+                    "Certificates": [
+                        {
+                            "CertificateArn": {
+                                "Fn::ImportValue": "imported-cert-arn-name"
+                            }
+                        }
+                    ]
+                },
+                "Type": "AWS::ElasticLoadBalancingV2::ListenerCertificate"
+                }
             }
-          ]
-        },
-        "Type": "AWS::ElasticLoadBalancingV2::ListenerCertificate"
-      }
-  }
-}
-"""
+        }
+        """
         let templateResponse = GetTemplateResponse()
         templateResponse.TemplateBody <- template
 
@@ -231,12 +231,23 @@ let templateBodyData = testList "templateBodyData" [
 
 let getPulumiImportJson = testList "getPulumiImportJson" [
     test "AWS::ElasticLoadBalancingV2::ListenerCertificate with Fn::ImportValue" {
-        let resourceData = Dictionary<string, Dictionary<string,string>>()
-        resourceData.Add("ListenerCertificate", Dictionary<string,string>())
-        resourceData["ListenerCertificate"].Add("ListenerArn", "listenerArn")
-        resourceData["ListenerCertificate"].Add("Certificates", "imported-cert-arn-val")
-        resourceData["ListenerCertificate"].Add("Id", "resourceId")
-        resourceData["ListenerCertificate"].Add("resourceType", "AWS::ElasticLoadBalancingV2::ListenerCertificate")
+        let resourceData = Dictionary<string,Dictionary<string,string>>(
+            Map.ofList [
+                "ListenerCertificate", Dictionary<string,string>(Map.ofList [
+                    "ListenerArn", "listenerArn";
+                    "Certificates", "imported-cert-arn-val";
+                    "Id", "resourceId";
+                    "resourceType", "AWS::ElasticLoadBalancingV2::ListenerCertificate";
+                ])
+            ]
+        )
+        
+        // let resourceData = Dictionary<string, Dictionary<string,string>>()
+        // resourceData.Add("ListenerCertificate", Dictionary<string,string>())
+        // resourceData["ListenerCertificate"].Add("ListenerArn", "listenerArn")
+        // resourceData["ListenerCertificate"].Add("Certificates", "imported-cert-arn-val")
+        // resourceData["ListenerCertificate"].Add("Id", "resourceId")
+        // resourceData["ListenerCertificate"].Add("resourceType", "AWS::ElasticLoadBalancingV2::ListenerCertificate")
 
         let resources = [{
             resourceId = "resourceId"
@@ -259,6 +270,9 @@ let getPulumiImportJson = testList "getPulumiImportJson" [
         Expect.equal ((resourceImport["name"]).ToString()) "ListenerCertificate" ""
         Expect.isTrue (resourceImport.ContainsKey "id") ""
         Expect.equal ((resourceImport["id"]).ToString()) "listenerArn_imported-cert-arn-val" ""
+
+        let testDict = Dictionary<string, string>(Map.ofList ["boink","blah"])
+        printfn "%A" testDict
     }
 
 ]
