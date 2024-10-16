@@ -1,9 +1,6 @@
 module AwsCloudFormationTemplates
 
 open System
-open System.Reflection
-
-open Amazon.EC2.Model
 open Newtonsoft.Json.Linq
 
 open AwsCloudFormationTypes
@@ -359,6 +356,7 @@ let remapSpecifications = Map.ofList [
         validatorFunc = validateSecurityGroupRule
     }
 
+    // v2 done
     "AWS::ECS::Service" => {
         pulumiType = getPulumiType "AWS::ECS::Service"
         importIdentityParts = ["Id"]
@@ -367,6 +365,7 @@ let remapSpecifications = Map.ofList [
         validatorFunc = validateFromImportIdentityParts
     }
 
+    // v2 done
     "AWS::ElasticLoadBalancingV2::ListenerCertificate" => {
         pulumiType = getPulumiType "AWS::ElasticLoadBalancingV2::ListenerCertificate"
         importIdentityParts = ["ListenerArn"; "Certificates"]
@@ -375,6 +374,7 @@ let remapSpecifications = Map.ofList [
         validatorFunc = validateFromImportIdentityParts
     }
 
+    // v2 done
     "AWS::Lambda::Permission" => {
         pulumiType = getPulumiType "AWS::Lambda::Permission"
         importIdentityParts = ["FunctionName"; "Id"]
@@ -383,6 +383,7 @@ let remapSpecifications = Map.ofList [
         validatorFunc = validateFromImportIdentityParts
     }
 
+    // v2 done
     "AWS::Lambda::LayerVersionPermission" => {
         pulumiType = getPulumiType "AWS::Lambda::LayerVersionPermission"
         importIdentityParts = ["LayerVersionArn"]
@@ -391,6 +392,7 @@ let remapSpecifications = Map.ofList [
         validatorFunc = validateFromImportIdentityParts
     }
 
+    // v2 done
     "AWS::Lambda::EventInvokeConfig" => {
         pulumiType = getPulumiType "AWS::Lambda::EventInvokeConfig"
         importIdentityParts = ["FunctionName"; "Qualifier"]
@@ -399,6 +401,7 @@ let remapSpecifications = Map.ofList [
         validatorFunc = validateFromImportIdentityParts
     }
 
+    // v2 done
     "AWS::Route53::RecordSet" => {
         pulumiType = getPulumiType "AWS::Route53::RecordSet"
         importIdentityParts = ["HostedZoneId"; "Name"; "Type"]
@@ -407,6 +410,7 @@ let remapSpecifications = Map.ofList [
         validatorFunc = validateFromImportIdentityParts
     }
 
+    // v2 done
     "AWS::S3::BucketPolicy" => {
         pulumiType = getPulumiType "AWS::S3::BucketPolicy"
         importIdentityParts = ["Bucket"]
@@ -415,6 +419,7 @@ let remapSpecifications = Map.ofList [
         validatorFunc = validateFromImportIdentityParts
     }
 
+    // v2 done
     "AWS::SQS::QueuePolicy" => {
         pulumiType = getPulumiType "AWS::SQS::QueuePolicy"
         importIdentityParts = ["Queues"]
@@ -423,6 +428,7 @@ let remapSpecifications = Map.ofList [
         validatorFunc = validateFromImportIdentityParts
     }
 
+    // v2 done
     "AWS::Transfer::Server" => {
         pulumiType = getPulumiType "AWS::Transfer::Server"
         importIdentityParts = ["Id"]
@@ -431,6 +437,7 @@ let remapSpecifications = Map.ofList [
         validatorFunc = validateFromImportIdentityParts
     }
 
+    // v2 done
     "AWS::Transfer::User" => {
         pulumiType = getPulumiType "AWS::Transfer::User"
         importIdentityParts = ["ServerId"; "UserName"]
@@ -462,21 +469,140 @@ let defaultRemapParts (spec: RemapSpecification) : RemapFunction =
         }
     }
 
+let requirePart (key: string) (data: Dictionary<string, string>) =
+    if data.ContainsKey key 
+    then Ok data[key]
+    else Error $"Missing required part '{key}'"
+
 let remapSpecificationsV2 : Map<string, RemapFunction> = Map.ofList [
     "AWS::ApplicationAutoScaling::ScalingPolicy" => fun resource data context ->
         result {
             let pulumiType = getPulumiType "AWS::ApplicationAutoScaling::ScalingPolicy"
-            let! data = requireParts ["ScalingTargetId"; "PolicyName"] data
+            let! scalingTargetId = requirePart "ScalingTargetId" data
+            let! policyName = requirePart "PolicyName" data
             let! importId = 
-                let scalingTargetId = data["ScalingTargetId"]
                 match scalingTargetId.Split("|") with
                 | scalingTargetParts when scalingTargetParts.Length = 3 -> 
                     scalingTargetParts
-                    |> Array.append [| data["PolicyName"] |]
+                    |> Array.rev
+                    |> Array.append [| policyName |]
                     |> String.concat "/" 
                     |> Ok
                 | _ -> 
                     Error $"Invalid ScalingTargetId: {scalingTargetId}"
+
+            return {
+                importId = importId
+                logicalId = resource.logicalId.Replace("-", "_")
+                resourceType = pulumiType
+            }
+        }
+
+    "AWS::ECS::Service" => fun resource data context ->
+        result {
+            let pulumiType = getPulumiType "AWS::ECS::Service"
+            let! physicalId = requirePart "Id" data
+            let! importId = 
+                match physicalId.Split("/") with
+                | parts when parts.Length > 1 -> 
+                    parts
+                    |> Array.skip 1
+                    |> String.concat "/"
+                    |> Ok
+                | _ -> 
+                    Error $"Invalid Id: {physicalId}"
+
+            return {
+                importId = importId
+                logicalId = resource.logicalId.Replace("-", "_")
+                resourceType = pulumiType
+            }
+        }
+
+    "AWS::ElasticLoadBalancingV2::ListenerCertificate" => defaultRemapParts {
+        pulumiType = getPulumiType "AWS::ElasticLoadBalancingV2::ListenerCertificate"
+        importIdentityParts = ["ListenerArn"; "Certificates"]
+        delimiter = "_"
+    }
+
+    "AWS::Lambda::Permission" => defaultRemapParts {
+        pulumiType = getPulumiType "AWS::Lambda::Permission"
+        importIdentityParts = ["FunctionName"; "Id"]
+        delimiter = "/"
+    }
+
+    "AWS::Lambda::LayerVersionPermission" => fun resource data context ->
+        result {
+            let pulumiType = getPulumiType "AWS::Lambda::LayerVersionPermission"
+            let! layerVersionArn = requirePart "LayerVersionArn" data
+            let! importId = 
+                // rewrite "part1:part2:partN:version" 
+                // into "part1:part2:partN,version"
+                match layerVersionArn.Split(":") with
+                | layerVersionArnParts when layerVersionArnParts.Length > 1 -> 
+                    let layerVersion = layerVersionArnParts[layerVersionArnParts.Length - 1]
+                    let layerArn = 
+                        layerVersionArnParts
+                        |> Array.except [| layerVersion |]
+                        |> String.concat ":"
+        
+                    Ok $"{layerArn},{layerVersion}"
+                | _ -> 
+                    Error $"Invalid LayerVersionArn: {layerVersionArn}"
+
+            return {
+                importId = importId
+                logicalId = resource.logicalId.Replace("-", "_")
+                resourceType = pulumiType
+            }
+        }
+
+    "AWS::Lambda::EventInvokeConfig" => defaultRemapParts {
+        pulumiType = getPulumiType "AWS::Lambda::EventInvokeConfig"
+        importIdentityParts = ["FunctionName"; "Qualifier"]
+        delimiter = ":"
+    }
+
+    "AWS::Route53::RecordSet" => fun resource data context ->
+        result {
+            let pulumiType = getPulumiType "AWS::Route53::RecordSet"
+            let! hostedZoneId = requirePart "HostedZoneId" data
+            let! name = requirePart "Name" data
+            let! recordType = requirePart "Type" data
+            let importId = 
+                if data.ContainsKey "SetIdentifier" then
+                    let setId = data["SetIdentifier"]
+                    $"{hostedZoneId}_{name}_{recordType}_{setId}"
+                else
+                    $"{hostedZoneId}_{name}_{recordType}"
+
+            return {
+                importId = importId
+                logicalId = resource.logicalId.Replace("-", "_")
+                resourceType = pulumiType
+            }
+        }
+
+    "AWS::S3::BucketPolicy" => defaultRemapParts {
+        pulumiType = getPulumiType "AWS::S3::BucketPolicy"
+        importIdentityParts = ["Bucket"]
+        delimiter = "/"
+    }
+
+    "AWS::SQS::QueuePolicy" => defaultRemapParts {
+        pulumiType = getPulumiType "AWS::SQS::QueuePolicy"
+        importIdentityParts = ["Queues"]
+        delimiter = ""
+    }
+
+    "AWS::Transfer::Server" => fun resource data context ->
+        result {
+            let pulumiType = getPulumiType "AWS::Transfer::Server"
+            let! serverPhysicalId = requirePart "Id" data
+            let! importId = 
+                match serverPhysicalId.Split("/") with
+                | parts when parts.Length > 1 -> Ok parts[1]
+                | _ -> Error $"Invalid Id: {serverPhysicalId}"
 
             return {
                 importId = importId
