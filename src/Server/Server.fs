@@ -706,29 +706,17 @@ let isValidJson (json: string) =
 let [<Literal>] IdProperty = "Id"
 let [<Literal>] ArnProperty = "Arn"
 
-let getImportIdentityParts
-    (resourceType: string)
-    : Option<seq<string>> =      
-    match AwsCloudFormationTemplates.remapSpecifications.TryFind resourceType with
-    | Some(spec) -> Some spec.importIdentityParts
-    | _ -> None
-
 let shouldCheckPropNameForReferenceProperty
     (propName: string)
     (resourceType: string)
     : bool =
-    let hasIdentifierSuffix = 
         propName.EndsWith IdProperty || 
         propName.EndsWith ArnProperty || 
         propName.EndsWith "Name" ||
         propName.EndsWith "Identifier" ||
         propName.EndsWith "Namespace" ||
         propName.EndsWith "Dimension"
-    match getImportIdentityParts resourceType with
-    | Some(importIdentityParts) -> 
-        hasIdentifierSuffix || Seq.contains propName importIdentityParts
-    | _ -> 
-        hasIdentifierSuffix
+
 
 let getResource
     (identifier: string)
@@ -1091,31 +1079,19 @@ let listResourcesIfInTemplate
         return empty
 }
 
-let getRemappedImportProps 
-    (resource: AwsCloudFormationResource)
-    (resourceData: Dictionary<string, Dictionary<string,string>>)
-    (resourceContext: AwsResourceContext)
-    : Option<RemappedSpecResult> =      
-    
-    AwsCloudFormationTemplates.remapSpecifications
-    |> Seq.tryFind (fun pair -> pair.Key = resource.resourceType)
-    |> Option.map (fun pair -> pair.Value)
-    |> Option.filter (fun spec -> spec.validatorFunc resource resourceData spec)
-    |> Option.map (fun spec -> spec.remapFunc resource resourceData resourceContext spec)
-
-let getRemappedImportPropsV2
+let getRemappedImportProps
     (resource: AwsCloudFormationResource)
     (resourceData: Dictionary<string, Dictionary<string,string>>)
     (resourceContext: AwsResourceContext)
     : Result<RemappedSpecResult, string> =      
 
-    AwsCloudFormationTemplates.remapSpecificationsV2
+    AwsCloudFormationTemplates.importIdentityBuilders
     |> Map.tryFind resource.resourceType
-    |> Option.filter (fun _ -> resourceData.ContainsKey resource.logicalId)
-    |> function
+    |> function 
         | None ->
-            Error $"Found no mapping specification for resource type {resource.resourceType}" 
-        
+            Error $"Found no mapping specification for resource type {resource.resourceType}"
+        | Some _ when not (resourceData.ContainsKey resource.logicalId) -> 
+            Error $"Resource '{resource.logicalId}' of type {resource.resourceType} has no data"
         | Some generateImportId ->
             match AwsCloudFormation.mapToPulumi resource.resourceType with
             | None ->
@@ -1145,9 +1121,8 @@ let getPulumiImportJson
     // loop over filtered resources to construct pulumiImportJson
     for resource in cloudformationResources do
         let resourceJson = JObject()
-
         match getRemappedImportProps resource resourceData resourceContext with
-        | Some remappedSpecResult -> 
+        | Ok remappedSpecResult -> 
             resourceJson.Add("type", remappedSpecResult.resourceType)
             resourceJson.Add("name", remappedSpecResult.logicalId)
             resourceJson.Add("id", remappedSpecResult.importId)
