@@ -3,6 +3,7 @@ module Server.Tests
 open System.Collections.Generic
 open Newtonsoft.Json.Linq
 open Expecto
+open Amazon.CloudFormation.Model
 
 open AwsCloudFormationTypes
 open Shared
@@ -157,7 +158,7 @@ let resolveTokenValue = testList "resolveTokenValue" [
     test "resolves Join of string, import, and getatt" {
         let data = Dictionary<string, Dictionary<string,string>>()
         data.Add("resourceLogicalId", Dictionary<string,string>())
-        data["resourceLogicalId"].Add("Id","resourcePhysicalId")
+        data["resourceLogicalId"].Add("Name","resourcePhysicalId")
         let stackExports = Map.ofList ["importKey","importValue"]
         let jsonString = "{
           \"Fn::Join\": [
@@ -177,8 +178,89 @@ let resolveTokenValue = testList "resolveTokenValue" [
           ]
         }"
         let token = JObject.Parse(jsonString)
-        Expect.equal (resolveTokenValue data stackExports token) "service/importValue/resourcePhysicalId" ""
+        let resolved = resolveTokenValue data stackExports token
+        Expect.equal resolved "service/importValue/resourcePhysicalId" ""
     }
+]
+
+let templateBodyData = testList "templateBodyData" [
+    test "AWS::ElasticLoadBalancingV2::ListenerCertificate with Fn::ImportValue" {
+        let template = """
+{
+    "Resources": {
+      "ListenerCertificate": {
+        "Properties": {
+          "ListenerArn": "listenerArn",
+          "Certificates": [
+            {
+              "CertificateArn": {
+                "Fn::ImportValue": "imported-cert-arn-name"
+              }
+            }
+          ]
+        },
+        "Type": "AWS::ElasticLoadBalancingV2::ListenerCertificate"
+      }
+  }
+}
+"""
+        let templateResponse = GetTemplateResponse()
+        templateResponse.TemplateBody <- template
+
+        let stackExports = Map.ofList ["imported-cert-arn-name", "imported-cert-arn-val"]
+        let resources = [{
+            resourceId = "resourceId"
+            logicalId = "ListenerCertificate"
+            resourceType = "AWS::ElasticLoadBalancingV2::ListenerCertificate"
+        }]
+        let region = "us-east-1"
+
+        let resourceData, _ = templateBodyData templateResponse resources stackExports region
+        Expect.isTrue (resourceData.ContainsKey "ListenerCertificate") ""
+        let certProps = resourceData["ListenerCertificate"] 
+        Expect.isTrue (certProps.ContainsKey "ListenerArn") ""
+        Expect.equal certProps["ListenerArn"] "listenerArn" ""
+        Expect.isTrue (certProps.ContainsKey "Certificates") ""
+        Expect.equal certProps["Certificates"] "imported-cert-arn-val" ""
+        Expect.isTrue (certProps.ContainsKey "Id") ""
+        Expect.equal certProps["Id"] "resourceId" ""
+        Expect.isTrue (certProps.ContainsKey "resourceType") ""
+        Expect.equal certProps["resourceType"] "AWS::ElasticLoadBalancingV2::ListenerCertificate" ""
+    }
+]
+
+let getPulumiImportJson = testList "getPulumiImportJson" [
+    test "AWS::ElasticLoadBalancingV2::ListenerCertificate with Fn::ImportValue" {
+        let resourceData = Dictionary<string, Dictionary<string,string>>()
+        resourceData.Add("ListenerCertificate", Dictionary<string,string>())
+        resourceData["ListenerCertificate"].Add("ListenerArn", "listenerArn")
+        resourceData["ListenerCertificate"].Add("Certificates", "imported-cert-arn-val")
+        resourceData["ListenerCertificate"].Add("Id", "resourceId")
+        resourceData["ListenerCertificate"].Add("resourceType", "AWS::ElasticLoadBalancingV2::ListenerCertificate")
+
+        let resources = [{
+            resourceId = "resourceId"
+            logicalId = "ListenerCertificate"
+            resourceType = "AWS::ElasticLoadBalancingV2::ListenerCertificate"
+        }]
+
+        let context = AwsResourceContext.Empty
+
+        let importJson, errors = getPulumiImportJson resources context resourceData
+        Expect.isTrue (importJson.ContainsKey "resources") ""
+        Expect.equal importJson["resources"].Type JTokenType.Array ""
+        let resourcesArr = importJson["resources"].ToObject<JArray>()
+        Expect.equal resourcesArr.Count 1 ""
+        Expect.equal resourcesArr[0].Type JTokenType.Object ""
+        let resourceImport = resourcesArr[0].ToObject<JObject>()
+        Expect.isTrue (resourceImport.ContainsKey "type") ""
+        Expect.equal ((resourceImport["type"]).ToString()) "aws:lb/listenerCertificate:ListenerCertificate" ""
+        Expect.isTrue (resourceImport.ContainsKey "name") ""
+        Expect.equal ((resourceImport["name"]).ToString()) "ListenerCertificate" ""
+        Expect.isTrue (resourceImport.ContainsKey "id") ""
+        Expect.equal ((resourceImport["id"]).ToString()) "listenerArn_imported-cert-arn-val" ""
+    }
+
 ]
 
 let all =
@@ -188,6 +270,8 @@ let all =
             getRemappedImportProps
             getImportIdentityParts
             resolveTokenValue
+            templateBodyData
+            getPulumiImportJson
         ]
 
 [<EntryPoint>]
