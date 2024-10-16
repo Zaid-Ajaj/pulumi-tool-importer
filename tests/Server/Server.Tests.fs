@@ -1,6 +1,9 @@
 module Server.Tests
 
 open System.Collections.Generic
+open System.IO
+open System.Linq
+
 open Newtonsoft.Json.Linq
 open Expecto
 open Amazon.CloudFormation.Model
@@ -9,6 +12,27 @@ open AwsCloudFormationTypes
 open Shared
 open Server
 
+let dictIsEqual (dic1: Dictionary<string,string>) (dic2: Dictionary<string,string>) =
+    let dic1Ordered = Dictionary<string,string>(dic1.OrderBy(fun entry -> entry.Key))
+    let dic2Ordered = Dictionary<string,string>(dic2.OrderBy(fun entry -> entry.Key))
+    let keysMatch = 
+        dic1Ordered
+        |> Seq.forall (fun entry -> 
+            dic2Ordered.ContainsKey entry.Key
+            && entry.Value = dic2Ordered[entry.Key])
+    (dic1Ordered.Count = dic2Ordered.Count) && keysMatch
+
+let resourceDataIsEqual 
+    (dic1: Dictionary<string,Dictionary<string,string>>)
+    (dic2: Dictionary<string,Dictionary<string,string>>) =
+    let dic1Ordered = Dictionary<string,Dictionary<string,string>>(dic1.OrderBy(fun entry -> entry.Key))
+    let dic2Ordered = Dictionary<string,Dictionary<string,string>>(dic2.OrderBy(fun entry -> entry.Key))
+    let keysMatch = 
+        dic1Ordered
+        |> Seq.forall (fun entry -> 
+            dic2Ordered.ContainsKey entry.Key
+            && (dictIsEqual entry.Value dic2Ordered[entry.Key]))
+    (dic1Ordered.Count = dic2Ordered.Count) && keysMatch
 
 let getImportIdentityParts = testList "getImportIdentityParts" [
     test "resourceType not in remapSpec returns None" {
@@ -216,16 +240,22 @@ let templateBodyData = testList "templateBodyData" [
         let region = "us-east-1"
 
         let resourceData, _ = templateBodyData templateResponse resources stackExports region
-        Expect.isTrue (resourceData.ContainsKey "ListenerCertificate") ""
-        let certProps = resourceData["ListenerCertificate"] 
-        Expect.isTrue (certProps.ContainsKey "ListenerArn") ""
-        Expect.equal certProps["ListenerArn"] "listenerArn" ""
-        Expect.isTrue (certProps.ContainsKey "Certificates") ""
-        Expect.equal certProps["Certificates"] "imported-cert-arn-val" ""
-        Expect.isTrue (certProps.ContainsKey "Id") ""
-        Expect.equal certProps["Id"] "resourceId" ""
-        Expect.isTrue (certProps.ContainsKey "resourceType") ""
-        Expect.equal certProps["resourceType"] "AWS::ElasticLoadBalancingV2::ListenerCertificate" ""
+
+        let expectedData = Dictionary<string,Dictionary<string,string>>(
+            Map.ofList [
+                "ListenerCertificate", Dictionary<string,string>(Map.ofList [
+                    "ListenerArn", "listenerArn";
+                    "Certificates", "imported-cert-arn-val";
+                    "Id", "resourceId";
+                    "resourceType", "AWS::ElasticLoadBalancingV2::ListenerCertificate";
+                ]);
+                "AWS::Region", Dictionary<string,string>(Map.ofList [
+                    "Id", "us-east-1"
+                ])
+            ]
+        )
+
+        Expect.isTrue (resourceDataIsEqual expectedData resourceData) "resourceData does not match expectedData"
     }
 ]
 
@@ -241,13 +271,6 @@ let getPulumiImportJson = testList "getPulumiImportJson" [
                 ])
             ]
         )
-        
-        // let resourceData = Dictionary<string, Dictionary<string,string>>()
-        // resourceData.Add("ListenerCertificate", Dictionary<string,string>())
-        // resourceData["ListenerCertificate"].Add("ListenerArn", "listenerArn")
-        // resourceData["ListenerCertificate"].Add("Certificates", "imported-cert-arn-val")
-        // resourceData["ListenerCertificate"].Add("Id", "resourceId")
-        // resourceData["ListenerCertificate"].Add("resourceType", "AWS::ElasticLoadBalancingV2::ListenerCertificate")
 
         let resources = [{
             resourceId = "resourceId"
@@ -258,21 +281,18 @@ let getPulumiImportJson = testList "getPulumiImportJson" [
         let context = AwsResourceContext.Empty
 
         let importJson, errors = getPulumiImportJson resources context resourceData
-        Expect.isTrue (importJson.ContainsKey "resources") ""
-        Expect.equal importJson["resources"].Type JTokenType.Array ""
-        let resourcesArr = importJson["resources"].ToObject<JArray>()
-        Expect.equal resourcesArr.Count 1 ""
-        Expect.equal resourcesArr[0].Type JTokenType.Object ""
-        let resourceImport = resourcesArr[0].ToObject<JObject>()
-        Expect.isTrue (resourceImport.ContainsKey "type") ""
-        Expect.equal ((resourceImport["type"]).ToString()) "aws:lb/listenerCertificate:ListenerCertificate" ""
-        Expect.isTrue (resourceImport.ContainsKey "name") ""
-        Expect.equal ((resourceImport["name"]).ToString()) "ListenerCertificate" ""
-        Expect.isTrue (resourceImport.ContainsKey "id") ""
-        Expect.equal ((resourceImport["id"]).ToString()) "listenerArn_imported-cert-arn-val" ""
-
-        let testDict = Dictionary<string, string>(Map.ofList ["boink","blah"])
-        printfn "%A" testDict
+        let expectedImportJson = JObject.Parse("""
+        {
+            "resources": [
+                {
+                    "id": "listenerArn_imported-cert-arn-val",
+                    "type": "aws:lb/listenerCertificate:ListenerCertificate",
+                    "name": "ListenerCertificate"
+                }
+            ]
+        }
+        """)
+        Expect.isTrue (JToken.DeepEquals(importJson, expectedImportJson)) "importJson and expectedImportJson don't match"
     }
 
 ]
