@@ -457,16 +457,11 @@ let requireParts (keys: string list) (data: Dictionary<string, string>) =
             |> String.concat ", "
         Error $"Missing required parts [{missingKeys}]"
 
-let defaultRemapParts (spec: RemapSpecification) : RemapFunction = 
+let defaultImportIdentity (spec: ImportIdentityParts) : RemapFunction = 
     fun resource resourceData context -> result {
         let! data = requireParts spec.importIdentityParts resourceData
         let parts = spec.importIdentityParts |> List.map (fun key -> data[key])
-        let importId = String.concat spec.delimiter parts
-        return {
-            importId = importId
-            logicalId = resource.logicalId.Replace("-", "_")
-            resourceType = spec.pulumiType
-        }
+        return String.concat spec.delimiter parts
     }
 
 let requirePart (key: string) (data: Dictionary<string, string>) =
@@ -477,7 +472,6 @@ let requirePart (key: string) (data: Dictionary<string, string>) =
 let remapSpecificationsV2 : Map<string, RemapFunction> = Map.ofList [
     "AWS::ApplicationAutoScaling::ScalingPolicy" => fun resource data context ->
         result {
-            let pulumiType = getPulumiType "AWS::ApplicationAutoScaling::ScalingPolicy"
             let! scalingTargetId = requirePart "ScalingTargetId" data
             let! policyName = requirePart "PolicyName" data
             let! importId = 
@@ -491,16 +485,11 @@ let remapSpecificationsV2 : Map<string, RemapFunction> = Map.ofList [
                 | _ -> 
                     Error $"Invalid ScalingTargetId: {scalingTargetId}"
 
-            return {
-                importId = importId
-                logicalId = resource.logicalId.Replace("-", "_")
-                resourceType = pulumiType
-            }
+            return importId
         }
 
     "AWS::ECS::Service" => fun resource data context ->
         result {
-            let pulumiType = getPulumiType "AWS::ECS::Service"
             let! physicalId = requirePart "Id" data
             let! importId = 
                 match physicalId.Split("/") with
@@ -512,28 +501,21 @@ let remapSpecificationsV2 : Map<string, RemapFunction> = Map.ofList [
                 | _ -> 
                     Error $"Invalid Id: {physicalId}"
 
-            return {
-                importId = importId
-                logicalId = resource.logicalId.Replace("-", "_")
-                resourceType = pulumiType
-            }
+            return importId
         }
 
-    "AWS::ElasticLoadBalancingV2::ListenerCertificate" => defaultRemapParts {
-        pulumiType = getPulumiType "AWS::ElasticLoadBalancingV2::ListenerCertificate"
+    "AWS::ElasticLoadBalancingV2::ListenerCertificate" => defaultImportIdentity {
         importIdentityParts = ["ListenerArn"; "Certificates"]
         delimiter = "_"
     }
 
-    "AWS::Lambda::Permission" => defaultRemapParts {
-        pulumiType = getPulumiType "AWS::Lambda::Permission"
+    "AWS::Lambda::Permission" => defaultImportIdentity {
         importIdentityParts = ["FunctionName"; "Id"]
         delimiter = "/"
     }
 
     "AWS::Lambda::LayerVersionPermission" => fun resource data context ->
         result {
-            let pulumiType = getPulumiType "AWS::Lambda::LayerVersionPermission"
             let! layerVersionArn = requirePart "LayerVersionArn" data
             let! importId = 
                 // rewrite "part1:part2:partN:version" 
@@ -550,22 +532,16 @@ let remapSpecificationsV2 : Map<string, RemapFunction> = Map.ofList [
                 | _ -> 
                     Error $"Invalid LayerVersionArn: {layerVersionArn}"
 
-            return {
-                importId = importId
-                logicalId = resource.logicalId.Replace("-", "_")
-                resourceType = pulumiType
-            }
+            return importId
         }
 
-    "AWS::Lambda::EventInvokeConfig" => defaultRemapParts {
-        pulumiType = getPulumiType "AWS::Lambda::EventInvokeConfig"
+    "AWS::Lambda::EventInvokeConfig" => defaultImportIdentity {
         importIdentityParts = ["FunctionName"; "Qualifier"]
         delimiter = ":"
     }
 
     "AWS::Route53::RecordSet" => fun resource data context ->
         result {
-            let pulumiType = getPulumiType "AWS::Route53::RecordSet"
             let! hostedZoneId = requirePart "HostedZoneId" data
             let! name = requirePart "Name" data
             let! recordType = requirePart "Type" data
@@ -576,43 +552,31 @@ let remapSpecificationsV2 : Map<string, RemapFunction> = Map.ofList [
                 else
                     $"{hostedZoneId}_{name}_{recordType}"
 
-            return {
-                importId = importId
-                logicalId = resource.logicalId.Replace("-", "_")
-                resourceType = pulumiType
-            }
+            return importId
         }
 
-    "AWS::S3::BucketPolicy" => defaultRemapParts {
-        pulumiType = getPulumiType "AWS::S3::BucketPolicy"
+    "AWS::S3::BucketPolicy" => defaultImportIdentity {
         importIdentityParts = ["Bucket"]
         delimiter = "/"
     }
 
-    "AWS::SQS::QueuePolicy" => defaultRemapParts {
-        pulumiType = getPulumiType "AWS::SQS::QueuePolicy"
+    "AWS::SQS::QueuePolicy" => defaultImportIdentity {
         importIdentityParts = ["Queues"]
         delimiter = ""
     }
 
     "AWS::Transfer::Server" => fun resource data context ->
         result {
-            let pulumiType = getPulumiType "AWS::Transfer::Server"
             let! serverPhysicalId = requirePart "Id" data
             let! importId = 
                 match serverPhysicalId.Split("/") with
                 | parts when parts.Length > 1 -> Ok parts[1]
                 | _ -> Error $"Invalid Id: {serverPhysicalId}"
 
-            return {
-                importId = importId
-                logicalId = resource.logicalId.Replace("-", "_")
-                resourceType = pulumiType
-            }
+            return importId
         }
-    
-    "AWS::Transfer::User" => defaultRemapParts {
-        pulumiType = getPulumiType "AWS::Transfer::User"
+
+    "AWS::Transfer::User" => defaultImportIdentity {
         importIdentityParts = ["ServerId"; "UserName"]
         delimiter = "/"
     }

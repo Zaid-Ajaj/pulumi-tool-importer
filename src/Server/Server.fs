@@ -1107,17 +1107,30 @@ let getRemappedImportPropsV2
     (resource: AwsCloudFormationResource)
     (resourceData: Dictionary<string, Dictionary<string,string>>)
     (resourceContext: AwsResourceContext)
-    : Option<RemappedSpecResult> =      
-    
+    : Result<RemappedSpecResult, string> =      
+
     AwsCloudFormationTemplates.remapSpecificationsV2
     |> Map.tryFind resource.resourceType
     |> Option.filter (fun _ -> resourceData.ContainsKey resource.logicalId)
-    |> Option.bind (fun remapFunc -> 
-        let data = resourceData[resource.logicalId]
-        match remapFunc resource data resourceContext with
-        | Ok remappedSpecResult -> Some remappedSpecResult
-        | Error remapError -> None // todo: log error or return it to user
-    ) 
+    |> function
+        | None ->
+            Error $"Found no mapping specification for resource type {resource.resourceType}" 
+        
+        | Some generateImportId ->
+            match AwsCloudFormation.mapToPulumi resource.resourceType with
+            | None ->
+                Error $"Resource type {resource.resourceType} has no corresponding Pulumi type"
+            | Some pulumiType -> 
+                let data = resourceData[resource.logicalId]
+                match generateImportId resource data resourceContext with
+                | Ok importId -> 
+                    Ok {
+                        importId = importId
+                        resourceType = pulumiType
+                        logicalId = resource.logicalId.Replace("-", "_")
+                    }
+                | Error importIdentityError -> 
+                    Error $"Failed to generate import ID for {resource.resourceType}: {importIdentityError}"
 
 
 let getPulumiImportJson 
@@ -1134,7 +1147,7 @@ let getPulumiImportJson
         let resourceJson = JObject()
 
         match getRemappedImportProps resource resourceData resourceContext with
-        | Some (remappedSpecResult) -> 
+        | Some remappedSpecResult -> 
             resourceJson.Add("type", remappedSpecResult.resourceType)
             resourceJson.Add("name", remappedSpecResult.logicalId)
             resourceJson.Add("id", remappedSpecResult.importId)
