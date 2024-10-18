@@ -1,13 +1,38 @@
 module Server.Tests
 
 open System.Collections.Generic
+open System.IO
+open System.Linq
+
 open Newtonsoft.Json.Linq
 open Expecto
+open Amazon.CloudFormation.Model
 
 open AwsCloudFormationTypes
 open Shared
 open Server
 
+let dictIsEqual (dic1: Dictionary<string,string>) (dic2: Dictionary<string,string>) =
+    let dic1Ordered = Dictionary<string,string>(dic1.OrderBy(fun entry -> entry.Key))
+    let dic2Ordered = Dictionary<string,string>(dic2.OrderBy(fun entry -> entry.Key))
+    let keysMatch = 
+        dic1Ordered
+        |> Seq.forall (fun entry -> 
+            dic2Ordered.ContainsKey entry.Key
+            && entry.Value = dic2Ordered[entry.Key])
+    (dic1Ordered.Count = dic2Ordered.Count) && keysMatch
+
+let resourceDataIsEqual 
+    (dic1: Dictionary<string,Dictionary<string,string>>)
+    (dic2: Dictionary<string,Dictionary<string,string>>) =
+    let dic1Ordered = Dictionary<string,Dictionary<string,string>>(dic1.OrderBy(fun entry -> entry.Key))
+    let dic2Ordered = Dictionary<string,Dictionary<string,string>>(dic2.OrderBy(fun entry -> entry.Key))
+    let keysMatch = 
+        dic1Ordered
+        |> Seq.forall (fun entry -> 
+            dic2Ordered.ContainsKey entry.Key
+            && (dictIsEqual entry.Value dic2Ordered[entry.Key]))
+    (dic1Ordered.Count = dic2Ordered.Count) && keysMatch
 
 let getRemappedImportProps = testList "getRemappedImportProps" [
     test "resourceType not in remapSpec returns error" {
@@ -133,45 +158,136 @@ let resolveTokenValue = testList "resolveTokenValue" [
         data.Add("AWS::Region", Dictionary<string,string>())
         data["AWS::Region"].Add("Id","us-west-2")
         let stackExports = Map.ofList []
-        let jsonString = "{
-          \"Fn::Join\": [
-            \"/\",
+        let jsonString = """{
+          "Fn::Join": [
+            "/",
             [
-              \"dropbeacon.dev2.healthsparq.com.\",
+              "dropbeacon.dev2.healthsparq.com.",
               {
-                \"Ref\": \"AWS::Region\"
+                "Ref": "AWS::Region"
               }
             ]
           ]
-        }"
+        }"""
         let token = JObject.Parse(jsonString)
         Expect.equal (resolveTokenValue data stackExports token) "dropbeacon.dev2.healthsparq.com./us-west-2" ""
     }
     test "resolves Join of string, import, and getatt" {
         let data = Dictionary<string, Dictionary<string,string>>()
         data.Add("resourceLogicalId", Dictionary<string,string>())
-        data["resourceLogicalId"].Add("Id","resourcePhysicalId")
+        data["resourceLogicalId"].Add("Name","resourcePhysicalId")
         let stackExports = Map.ofList ["importKey","importValue"]
-        let jsonString = "{
-          \"Fn::Join\": [
-            \"/\",
+        let jsonString = """{
+          "Fn::Join": [
+            "/",
             [
-              \"service\",
+              "service",
               {
-                \"Fn::ImportValue\": \"importKey\"
+                "Fn::ImportValue": "importKey"
               },
               {
-                \"Fn::GetAtt\": [
-                    \"resourceLogicalId\",
-                    \"Name\"
+                "Fn::GetAtt": [
+                    "resourceLogicalId",
+                    "Name"
                 ]
               }
             ]
           ]
-        }"
+        }"""
         let token = JObject.Parse(jsonString)
-        Expect.equal (resolveTokenValue data stackExports token) "service/importValue/resourcePhysicalId" ""
+        let resolved = resolveTokenValue data stackExports token
+        Expect.equal resolved "service/importValue/resourcePhysicalId" ""
     }
+]
+
+let templateBodyData = testList "templateBodyData" [
+    test "AWS::ElasticLoadBalancingV2::ListenerCertificate with Fn::ImportValue" {
+        let template = """
+        {
+            "Resources": {
+                "ListenerCertificate": {
+                    "Properties": {
+                    "ListenerArn": "listenerArn",
+                    "Certificates": [
+                        {
+                            "CertificateArn": {
+                                "Fn::ImportValue": "imported-cert-arn-name"
+                            }
+                        }
+                    ]
+                },
+                "Type": "AWS::ElasticLoadBalancingV2::ListenerCertificate"
+                }
+            }
+        }
+        """
+        let templateResponse = GetTemplateResponse()
+        templateResponse.TemplateBody <- template
+
+        let stackExports = Map.ofList ["imported-cert-arn-name", "imported-cert-arn-val"]
+        let resources = [{
+            resourceId = "resourceId"
+            logicalId = "ListenerCertificate"
+            resourceType = "AWS::ElasticLoadBalancingV2::ListenerCertificate"
+        }]
+        let region = "us-east-1"
+
+        let resourceData, _ = templateBodyData templateResponse resources stackExports region
+
+        let expectedData = Dictionary<string,Dictionary<string,string>>(
+            Map.ofList [
+                "ListenerCertificate", Dictionary<string,string>(Map.ofList [
+                    "ListenerArn", "listenerArn";
+                    "Certificates", "imported-cert-arn-val";
+                    "Id", "resourceId";
+                    "resourceType", "AWS::ElasticLoadBalancingV2::ListenerCertificate";
+                ]);
+                "AWS::Region", Dictionary<string,string>(Map.ofList [
+                    "Id", "us-east-1"
+                ])
+            ]
+        )
+
+        Expect.isTrue (resourceDataIsEqual expectedData resourceData) "resourceData does not match expectedData"
+    }
+]
+
+let getPulumiImportJson = testList "getPulumiImportJson" [
+    test "AWS::ElasticLoadBalancingV2::ListenerCertificate with Fn::ImportValue" {
+        let resourceData = Dictionary<string,Dictionary<string,string>>(
+            Map.ofList [
+                "ListenerCertificate", Dictionary<string,string>(Map.ofList [
+                    "ListenerArn", "listenerArn";
+                    "Certificates", "imported-cert-arn-val";
+                    "Id", "resourceId";
+                    "resourceType", "AWS::ElasticLoadBalancingV2::ListenerCertificate";
+                ])
+            ]
+        )
+
+        let resources = [{
+            resourceId = "resourceId"
+            logicalId = "ListenerCertificate"
+            resourceType = "AWS::ElasticLoadBalancingV2::ListenerCertificate"
+        }]
+
+        let context = AwsResourceContext.Empty
+
+        let importJson, errors = getPulumiImportJson resources context resourceData
+        let expectedImportJson = JObject.Parse("""
+        {
+            "resources": [
+                {
+                    "id": "listenerArn_imported-cert-arn-val",
+                    "type": "aws:lb/listenerCertificate:ListenerCertificate",
+                    "name": "ListenerCertificate"
+                }
+            ]
+        }
+        """)
+        Expect.isTrue (JToken.DeepEquals(importJson, expectedImportJson)) "importJson and expectedImportJson don't match"
+    }
+
 ]
 
 let all =
@@ -180,6 +296,8 @@ let all =
             Shared.Tests.shared
             getRemappedImportProps
             resolveTokenValue
+            templateBodyData
+            getPulumiImportJson
         ]
 
 [<EntryPoint>]

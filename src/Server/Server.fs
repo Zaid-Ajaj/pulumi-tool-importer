@@ -834,10 +834,11 @@ let rec resolveTokenValue
             if getAtt.Count = 2 && getAtt[0].Type = JTokenType.String && getAtt[1].Type = JTokenType.String then
                 let referencedResourceLogicalId = getAtt[0].ToObject<string>()
                 let targetAttPath = getAtt[1].ToObject<string>()
-                let key = Seq.head (targetAttPath.Split("."))
-                if data.ContainsKey referencedResourceLogicalId then
+                let targetAttPathSeq = targetAttPath.Split(".")
+                let key = Seq.head targetAttPathSeq
+                if data.ContainsKey referencedResourceLogicalId then 
                     let targetResourceData = data[referencedResourceLogicalId]
-                    if (Seq.length targetAttPath) = 1 && targetResourceData.ContainsKey key then
+                    if (Seq.length targetAttPathSeq) = 1 && targetResourceData.ContainsKey key then
                         targetResourceData[key]
                     else
                     // if the Fn::GetAtt cannot be resolved from existing resource data, return
