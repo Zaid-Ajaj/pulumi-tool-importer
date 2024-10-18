@@ -54,7 +54,7 @@ let getRemappedImportProps = testList "getRemappedImportProps" [
         }
         let resourceData = Dictionary<string, Dictionary<string, string>>()
         let actual = getRemappedImportProps resource resourceData AwsResourceContext.Empty
-        Expect.equal actual (Error "Resource 'foo' of type AWS::ApiGateway::Deployment has no data") ""
+        Expect.equal actual (Error "Resource 'foo' of type AWS::ApiGateway::Deployment has no resource data resolved") ""
     }
 
     test "ApiGateway Deployment remaps with remapFromImportIdentityParts)" {
