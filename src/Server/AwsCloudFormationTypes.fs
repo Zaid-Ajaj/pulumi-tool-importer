@@ -24,7 +24,7 @@ type AwsResourceContext = {
     securityGroupIngressRules: Map<string,JObject>
     securityGroupEgressRules: Map<string,JObject>
 }
-    with  
+    with
         static member Empty = {
             loadBalancers = Map.empty
             elasticIps = Map.empty
@@ -43,7 +43,10 @@ type CustomRemapSpecification = {
     validatorFunc: AwsCloudFormationResource -> Dictionary<string, Dictionary<string,string>> -> CustomRemapSpecification -> bool
 }
 
-type ImportIdentityBuilder = AwsCloudFormationResource -> Dictionary<string,string> -> AwsResourceContext -> Result<string, string>
+type ImportIdentityResolver = {
+    importIdentityParts: string list
+    resolveImportIdentity: AwsCloudFormationResource -> Dictionary<string,string> -> AwsResourceContext -> Result<string, string>
+}
 
 type RemapSpecification = {
     pulumiType: string

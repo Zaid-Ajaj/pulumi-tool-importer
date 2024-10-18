@@ -13,49 +13,56 @@ let tryFindSecurityGroupRule
     (data: Dictionary<string,string>)
     (rules: Map<string,JObject>) =
     rules
-    |> Map.filter (fun id props -> 
+    |> Map.filter (fun id props ->
         props.Property("GroupId").Value.ToString() = data["GroupId"])
-    |> Map.tryFindKey (fun id props ->
+    |> Map.filter (fun id props ->
         data
         |> Seq.forall (fun entry ->
-            if entry.Key = "Id" || entry.Key = "resourceType" then 
+            if entry.Key = "Id" || entry.Key = "resourceType" then
                 true
             elif props.ContainsKey entry.Key then
                 let prop = props.Property(entry.Key)
                 prop.Value.ToString() = data[prop.Name]
-            else 
+            else
                 false
         ))
+    |> Map.toList
+    |> function
+        // only when one rule is matched, we return they key being the import ID
+        | [ securityGroupImportId, _ ] -> Some securityGroupImportId
+        | _ -> None
 
 let requireParts (keys: string list) (data: Dictionary<string, string>) =
-    if keys |> List.forall (fun key -> data.ContainsKey key) then 
+    let availableAndNotEmpty key = data.ContainsKey key && not (String.IsNullOrWhiteSpace data[key])
+    if keys |> List.forall (fun key -> availableAndNotEmpty key) then
         Ok data
-    else 
-        let missingKeys = 
-            keys 
-            |> List.filter (fun key -> not (data.ContainsKey key))
+    else
+        let missingKeys =
+            keys
+            |> List.filter (fun key -> not(availableAndNotEmpty key))
             |> String.concat ", "
         Error $"Missing required parts [{missingKeys}]"
 
-let defaultImportIdentity (spec: ImportIdentityParts) : ImportIdentityBuilder = 
-    fun resource resourceData context -> result {
+let defaultImportIdentity (spec: ImportIdentityParts) : ImportIdentityResolver = {
+    importIdentityParts = spec.importIdentityParts
+    resolveImportIdentity = fun resource resourceData context -> result {
         let! data = requireParts spec.importIdentityParts resourceData
         let parts = spec.importIdentityParts |> List.map (fun key -> data[key])
         return String.concat spec.delimiter parts
     }
+}
 
 let requirePart (key: string) (data: Dictionary<string, string>) =
-    if data.ContainsKey key 
+    if data.ContainsKey key && not (String.IsNullOrWhiteSpace data[key])
     then Ok data[key]
     else Error $"Missing required part '{key}'"
 
 let optionalPart (key: string) (data: Dictionary<string, string>) =
-    if data.ContainsKey key 
+    if data.ContainsKey key && not (String.IsNullOrWhiteSpace data[key])
     then Some data[key]
     else None
 
-let importIdentityBuilders : Map<string, ImportIdentityBuilder> = Map.ofList [
-    
+let importIdentityResolvers : Map<string, ImportIdentityResolver> = Map.ofList [
     "AWS::ApiGateway::Resource" => defaultImportIdentity {
         importIdentityParts = ["RestApiId"; "Id"]
         delimiter = "/"
@@ -70,40 +77,40 @@ let importIdentityBuilders : Map<string, ImportIdentityBuilder> = Map.ofList [
         importIdentityParts = ["UsagePlanId"; "KeyId"]
         delimiter = "/"
     }
-    
-    "AWS::ApplicationAutoScaling::ScalingPolicy" => fun resource data context ->
-        result {
+
+    "AWS::ApplicationAutoScaling::ScalingPolicy" => {
+        importIdentityParts = ["ScalingTargetId"; "PolicyName"]
+        resolveImportIdentity = fun resource data context -> result {
             let! scalingTargetId = requirePart "ScalingTargetId" data
             let! policyName = requirePart "PolicyName" data
-            let! importId = 
+            let! importId =
                 match scalingTargetId.Split("|") with
-                | scalingTargetParts when scalingTargetParts.Length = 3 -> 
-                    scalingTargetParts
-                    |> Array.rev
-                    |> Array.append [| policyName |]
-                    |> String.concat "/" 
-                    |> Ok
-                | _ -> 
-                    Error $"Invalid ScalingTargetId: {scalingTargetId}"
-
-            return importId
-        }
-
-    "AWS::ApplicationAutoScaling::ScalableTarget" => fun resource data context ->
-        result {
-            let! physicalId = requirePart "Id" data
-            let! importId = 
-                match physicalId.Split("|") with
-                | parts when parts.Length = 3 -> 
-                    parts
-                    |> Array.rev
+                | scalingTargetParts when scalingTargetParts.Length = 3 ->
+                    [scalingTargetParts[2]; scalingTargetParts[0]; scalingTargetParts[1]]
+                    |> List.append [ policyName ]
                     |> String.concat "/"
                     |> Ok
-                | _ -> 
-                    Error $"Invalid Id: {physicalId}"
-
+                | _ ->
+                    Error $"Invalid ScalingTargetId: {scalingTargetId}"
             return importId
         }
+    }
+
+    "AWS::ApplicationAutoScaling::ScalableTarget" => {
+        importIdentityParts = ["Id"]
+        resolveImportIdentity = fun resource data context -> result {
+            let! physicalId = requirePart "Id" data
+            let! importId =
+                match physicalId.Split("|") with
+                | parts when parts.Length = 3 ->
+                    [parts[2]; parts[0]; parts[1]]
+                    |> String.concat "/"
+                    |> Ok
+                | _ ->
+                    Error $"Invalid Id: {physicalId}"
+            return importId
+        }
+    }
 
     "AWS::Cognito::UserPoolClient" => defaultImportIdentity {
         importIdentityParts = ["UserPoolId"; "Id"]
@@ -115,43 +122,53 @@ let importIdentityBuilders : Map<string, ImportIdentityBuilder> = Map.ofList [
         delimiter = "/"
     }
 
-    "AWS::EC2::SecurityGroupIngress" => fun resource data context ->
-        result {
+    "AWS::EC2::SecurityGroupIngress" => {
+        importIdentityParts = ["GroupId"; "IpProtocol"; "CidrIp"; "Description"; "FromPort"; "ToPort";"SourceSecurityGroupOwnerId"]
+        resolveImportIdentity = fun resource data context -> result {
             let! _ = requirePart "IpProtocol" data
             let! _ = requirePart "GroupId" data
-            let! importId = 
+            let! importId =
                 match tryFindSecurityGroupRule data context.securityGroupIngressRules with
                 | Some importId -> Ok importId
                 | None -> Error $"No matching security group rule found for {resource.resourceType} named {resource.logicalId}"
             return importId
         }
+    }
 
-    "AWS::EC2::SecurityGroupEgress" => fun resource data context ->
-        result {
+    "AWS::EC2::SecurityGroupEgress" => {
+        importIdentityParts = [
+            "GroupId"; "IpProtocol"; "CidrIp"; "Description"
+            "DestinationPrefixListId"; "DestinationSecurityGroupId"
+            "FromPort"; "ToPort"
+        ]
+        resolveImportIdentity = fun resource data context -> result {
             let! _ = requirePart "IpProtocol" data
             let! _ = requirePart "GroupId" data
-            let! importId = 
+            let! importId =
                 match tryFindSecurityGroupRule data context.securityGroupEgressRules with
                 | Some importId -> Ok importId
                 | None -> Error $"No matching security group rule found for {resource.resourceType} named {resource.logicalId}"
             return importId
         }
+    }
 
-    "AWS::ECS::Service" => fun resource data context ->
-        result {
+    "AWS::ECS::Service" => {
+        importIdentityParts = ["Id"]
+        resolveImportIdentity = fun resource data context -> result {
             let! physicalId = requirePart "Id" data
-            let! importId = 
+            let! importId =
                 match physicalId.Split("/") with
-                | parts when parts.Length > 1 -> 
+                | parts when parts.Length > 1 ->
                     parts
                     |> Array.skip 1
                     |> String.concat "/"
                     |> Ok
-                | _ -> 
+                | _ ->
                     Error $"Invalid Id: {physicalId}"
 
             return importId
         }
+    }
 
     "AWS::ElasticLoadBalancingV2::ListenerCertificate" => defaultImportIdentity {
         importIdentityParts = ["ListenerArn"; "Certificates"]
@@ -163,44 +180,50 @@ let importIdentityBuilders : Map<string, ImportIdentityBuilder> = Map.ofList [
         delimiter = "/"
     }
 
-    "AWS::Lambda::LayerVersionPermission" => fun resource data context ->
-        result {
+    "AWS::Lambda::LayerVersionPermission" => {
+        importIdentityParts = ["LayerVersionArn"]
+        resolveImportIdentity = fun resource data context -> result {
             let! layerVersionArn = requirePart "LayerVersionArn" data
-            let! importId = 
-                // rewrite "part1:part2:partN:version" 
+            let! importId =
+                // rewrite "part1:part2:partN:version"
                 // into "part1:part2:partN,version"
                 match layerVersionArn.Split(":") with
-                | layerVersionArnParts when layerVersionArnParts.Length > 1 -> 
-                    let layerVersion = layerVersionArnParts[layerVersionArnParts.Length - 1]
-                    let layerArn = 
-                        layerVersionArnParts
-                        |> Array.except [| layerVersion |]
+                | layerVersionArnParts when layerVersionArnParts.Length > 1 ->
+                    let lastElementIndex = layerVersionArnParts.Length - 1
+                    let layerVersion = layerVersionArnParts[lastElementIndex]
+                    let layerArn =
+                        // skip the last element
+                        [| 0 .. lastElementIndex - 1 |]
+                        |> Array.map (fun i -> layerVersionArnParts[i])
                         |> String.concat ":"
-        
+
                     Ok $"{layerArn},{layerVersion}"
-                | _ -> 
+                | _ ->
                     Error $"Invalid LayerVersionArn: {layerVersionArn}"
 
             return importId
         }
+    }
 
     "AWS::Lambda::EventInvokeConfig" => defaultImportIdentity {
         importIdentityParts = ["FunctionName"; "Qualifier"]
         delimiter = ":"
     }
 
-    "AWS::Route53::RecordSet" => fun resource data context ->
-        result {
+    "AWS::Route53::RecordSet" => {
+        importIdentityParts = ["HostedZoneId"; "Name"; "Type"]
+        resolveImportIdentity = fun resource data context -> result {
             let! hostedZoneId = requirePart "HostedZoneId" data
             let! name = requirePart "Name" data
             let! recordType = requirePart "Type" data
-            let importId = 
+            let importId =
                 match optionalPart "SetIdentifier" data with
                 | Some setId -> $"{hostedZoneId}_{name}_{recordType}_{setId}"
                 | None -> $"{hostedZoneId}_{name}_{recordType}"
 
             return importId
         }
+    }
 
     "AWS::S3::BucketPolicy" => defaultImportIdentity {
         importIdentityParts = ["Bucket"]
@@ -212,16 +235,18 @@ let importIdentityBuilders : Map<string, ImportIdentityBuilder> = Map.ofList [
         delimiter = ""
     }
 
-    "AWS::Transfer::Server" => fun resource data context ->
-        result {
+    "AWS::Transfer::Server" => {
+        importIdentityParts = ["Id"]
+        resolveImportIdentity = fun resource data context -> result {
             let! serverPhysicalId = requirePart "Id" data
-            let! importId = 
+            let! importId =
                 match serverPhysicalId.Split("/") with
                 | parts when parts.Length > 1 -> Ok parts[1]
                 | _ -> Error $"Invalid Id: {serverPhysicalId}"
 
             return importId
         }
+    }
 
     "AWS::Transfer::User" => defaultImportIdentity {
         importIdentityParts = ["ServerId"; "UserName"]
