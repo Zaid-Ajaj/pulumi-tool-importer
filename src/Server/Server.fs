@@ -540,7 +540,7 @@ let rec stackExports (nextToken: string option) (region: string) : Task<ResizeAr
     if not (isNull response.NextToken) then
         let! next = stackExports (Some response.NextToken) region
         exports.AddRange next
-    
+
     return exports
 }
 
@@ -706,29 +706,21 @@ let isValidJson (json: string) =
 let [<Literal>] IdProperty = "Id"
 let [<Literal>] ArnProperty = "Arn"
 
-let getImportIdentityParts
-    (resourceType: string)
-    : Option<seq<string>> =      
-    match AwsCloudFormationTemplates.remapSpecifications.TryFind resourceType with
-    | Some(spec) -> Some spec.importIdentityParts
-    | _ -> None
-
-let shouldCheckPropNameForReferenceProperty
-    (propName: string)
-    (resourceType: string)
-    : bool =
-    let hasIdentifierSuffix = 
-        propName.EndsWith IdProperty || 
-        propName.EndsWith ArnProperty || 
+let shouldCheckPropNameForReferenceProperty (propName: string) (resourceType: string) =
+    let hasIdentifierSuffix =
+        propName.EndsWith IdProperty ||
+        propName.EndsWith ArnProperty ||
         propName.EndsWith "Name" ||
         propName.EndsWith "Identifier" ||
         propName.EndsWith "Namespace" ||
         propName.EndsWith "Dimension"
-    match getImportIdentityParts resourceType with
-    | Some(importIdentityParts) -> 
-        hasIdentifierSuffix || Seq.contains propName importIdentityParts
-    | _ -> 
-        hasIdentifierSuffix
+
+    AwsCloudFormationTemplates.importIdentityResolvers
+    |> Map.tryFind resourceType
+    |> Option.map (fun resolver -> resolver.importIdentityParts)
+    |> function
+        | None -> hasIdentifierSuffix
+        | Some importIdentityParts -> List.contains propName importIdentityParts || hasIdentifierSuffix
 
 let getResource
     (identifier: string)
@@ -738,8 +730,8 @@ let getResource
     let request = GetResourceRequest()
     request.Identifier <- identifier
     request.TypeName <- typeName
-   
-    let! response = 
+
+    let! response =
         try
             client.GetResourceAsync request
         with
@@ -747,9 +739,9 @@ let getResource
             printfn "%A" ex
             return GetResourceResponse()
         }
-            
-    let properties = 
-        try 
+
+    let properties =
+        try
             JObject.Parse(response.ResourceDescription.Properties)
         with
         | ex ->
@@ -784,7 +776,7 @@ let rec resolveAttPath
             else ""
         else ""
     elif (Seq.length attPath) = 0 then ""
-    else 
+    else
         let key = Seq.head attPath
         let rest = Seq.tail attPath
         if properties[key].Type = JTokenType.Object then
@@ -810,14 +802,14 @@ let resolveGetAtt
     let targetResourceData = data[targetLogicalId]
     let targetResourceType = targetResourceData["resourceType"]
     let region = data["AWS::Region"]["Id"]
-    // resources of many types are identified in the cloud control api by the physical id, 
+    // resources of many types are identified in the cloud control api by the physical id,
     // but some use an id concatenated from multiple properties, so rules for non-standard types
     // can be added here
-    let identifier = 
+    let identifier =
         match targetResourceType with
         | _ -> targetResourceData[IdProperty]
     let! resolvedValue = resolveGetAttCloudControl identifier targetAttPath targetResourceType region
-    return resolvedValue 
+    return resolvedValue
 }
 
 let rec resolveTokenValue
@@ -825,7 +817,7 @@ let rec resolveTokenValue
     (stackExports: Map<string,string>)
     (token: JToken)
     : string =
-    if token.Type = JTokenType.Object then 
+    if token.Type = JTokenType.Object then
         let obj = token.ToObject<JObject>()
         // if the reference is to another resource in the template...
         if obj.ContainsKey "Ref" then
@@ -848,7 +840,7 @@ let rec resolveTokenValue
                     let targetResourceData = data[referencedResourceLogicalId]
                     if (Seq.length targetAttPathSeq) = 1 && targetResourceData.ContainsKey key then
                         targetResourceData[key]
-                    else 
+                    else
                     // if the Fn::GetAtt cannot be resolved from existing resource data, return
                     // a special value to be resolved later by api
                         String.concat "/" ["Fn::GetAtt"; referencedResourceLogicalId; targetAttPath]
@@ -868,8 +860,8 @@ let rec resolveTokenValue
             if join.Count = 2 && join[0].Type = JTokenType.String && join[1].Type = JTokenType.Array then
                 let delimiter = join[0].ToObject<string>()
                 let joinParts = join[1].ToObject<JArray>()
-                let resolvedParts = joinParts 
-                                    |> Seq.map (fun part -> 
+                let resolvedParts = joinParts
+                                    |> Seq.map (fun part ->
                                         resolveTokenValue data stackExports part)
                 String.Join(delimiter, resolvedParts)
             else ""
@@ -889,7 +881,7 @@ let rec resolveTokenValue
             resolveTokenValue data stackExports prop.Value
         else ""
     // also part of handling of above edge case, where the reference property is inside
-    // an array that is only allowed to have one item, see 
+    // an array that is only allowed to have one item, see
     // https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-elasticloadbalancingv2-listenercertificate.html#cfn-elasticloadbalancingv2-listenercertificate-certificates
     elif token.Type = JTokenType.Array then
         let arr = token.ToObject<JArray>()
@@ -899,16 +891,16 @@ let rec resolveTokenValue
 
     elif token.Type = JTokenType.String then
         token.ToObject<string>()
-        
-    else 
+
+    else
         ""
 
 // returns resource dependency data and cfn template as JObject
-let templateBodyData 
-    (cloudformationTemplate: GetTemplateResponse) 
-    (resources: seq<AwsCloudFormationResource>) 
+let templateBodyData
+    (cloudformationTemplate: GetTemplateResponse)
+    (resources: seq<AwsCloudFormationResource>)
     (stackExports: Map<string,string>)
-    (region: string) = 
+    (region: string) =
     let data = Dictionary<string, Dictionary<string, string>>()
     // convert cloudformation template body to JObject
     let bodyJson =
@@ -928,7 +920,7 @@ let templateBodyData
 
     // get Resources block from cfn template as JObject
     let resourcesFromTemplate = getJObject "Resources" bodyJson
-    // loop over resources within the Resources template block 
+    // loop over resources within the Resources template block
     // TODO: since this loops over the template, instead of the filtered resource list,
     // will this function add entries for skipped resources to the return data?
     for property in resourcesFromTemplate.Properties() do
@@ -936,7 +928,7 @@ let templateBodyData
         let resource = getJObject logicalId resourcesFromTemplate
         let resourceType = ((resource["Type"]).ToString())
         let properties = getJObject "Properties" resource
-        
+
         if not (data.ContainsKey logicalId) then data.Add(logicalId, Dictionary<string, string>())
         data[logicalId].Add("resourceType", resourceType)
 
@@ -944,11 +936,11 @@ let templateBodyData
             if shouldCheckPropNameForReferenceProperty property.Name resourceType then
                 let referenceValue = resolveTokenValue data stackExports property.Value
                 data[logicalId].Add(property.Name, referenceValue)
-                
+
     data, bodyJson
 
 let resolveFnGetAtt
-    (data: Dictionary<string, Dictionary<string,string>>) 
+    (data: Dictionary<string, Dictionary<string,string>>)
     = task {
         let toUpdate = List<List<string>>()
         for resource in data do
@@ -1019,11 +1011,11 @@ let getInternetGateways (vpcId: string) (region: string)= task {
     return response.InternetGateways
 }
 
-let getImportIdsForVPCGatewayAttachments 
-    (cloudformationResources: seq<AwsCloudFormationResource>) 
+let getImportIdsForVPCGatewayAttachments
+    (cloudformationResources: seq<AwsCloudFormationResource>)
     (region: string ) = task {
     let data = Dictionary<string, string>()
-    let vpcGatewayAttachments = 
+    let vpcGatewayAttachments =
             cloudformationResources
             |> Seq.filter (fun resource -> resource.resourceType = "AWS::EC2::VPCGatewayAttachment")
     for resource in vpcGatewayAttachments do
@@ -1041,10 +1033,10 @@ let getImportIdsForVPCGatewayAttachments
 }
 
 let rec listResourcesRec
-    (client: AmazonCloudControlApiClient) 
+    (client: AmazonCloudControlApiClient)
     (nextToken: string option)
-    (typeName: string) 
-    (region: string) 
+    (typeName: string)
+    (region: string)
     : Task<List<ResourceDescription>> = task {
     let resources = List()
     let request = ListResourcesRequest()
@@ -1055,7 +1047,7 @@ let rec listResourcesRec
     if not (isNull response.NextToken) then
         let! next = listResourcesRec client (Some response.NextToken) typeName region
         resources.AddRange next
-    
+
     return resources
 }
 
@@ -1063,8 +1055,8 @@ let resourceTypeInTemplate
     (resourceType: string)
     (cloudformationResources: seq<AwsCloudFormationResource>)
     : bool =
-    let count = 
-        cloudformationResources 
+    let count =
+        cloudformationResources
         |> Seq.filter (fun resource -> resource.resourceType = resourceType)
         |> Seq.length
     count > 0
@@ -1077,12 +1069,12 @@ let listResourcesIfInTemplate
     if resourceTypeInTemplate typeName cloudformationResources then
         let! resources = listResourcesRec client None typeName region
         return resources
-            |> Seq.map (fun resource -> 
-                let properties = 
-                    try 
+            |> Seq.map (fun resource ->
+                let properties =
+                    try
                         JObject.Parse(resource.Properties)
                     with
-                    | ex -> 
+                    | ex ->
                         printfn "%A" ex
                         JObject()
                 resource.Identifier, properties)
@@ -1092,37 +1084,38 @@ let listResourcesIfInTemplate
         return empty
 }
 
-let getRemappedImportProps 
+let getRemappedImportProps
     (resource: AwsCloudFormationResource)
     (resourceData: Dictionary<string, Dictionary<string,string>>)
     (resourceContext: AwsResourceContext)
-    : Option<RemappedSpecResult> =      
-    
-    AwsCloudFormationTemplates.remapSpecifications
-    |> Seq.tryFind (fun pair -> pair.Key = resource.resourceType)
-    |> Option.map (fun pair -> pair.Value)
-    |> Option.filter (fun spec -> spec.validatorFunc resource resourceData spec)
-    |> Option.map (fun spec -> spec.remapFunc resource resourceData resourceContext spec)
+    : Result<RemappedSpecResult, string> =
 
-let getRemappedImportPropsV2
-    (resource: AwsCloudFormationResource)
-    (resourceData: Dictionary<string, Dictionary<string,string>>)
-    (resourceContext: AwsResourceContext)
-    : Option<RemappedSpecResult> =      
-    
-    AwsCloudFormationTemplates.remapSpecificationsV2
+    AwsCloudFormationTemplates.importIdentityResolvers
     |> Map.tryFind resource.resourceType
-    |> Option.filter (fun _ -> resourceData.ContainsKey resource.logicalId)
-    |> Option.bind (fun remapFunc -> 
-        let data = resourceData[resource.logicalId]
-        match remapFunc resource data resourceContext with
-        | Ok remappedSpecResult -> Some remappedSpecResult
-        | Error remapError -> None // todo: log error or return it to user
-    ) 
+    |> function
+        | None ->
+            Error $"Found no mapping specification for resource type {resource.resourceType}"
+        | Some _ when not (resourceData.ContainsKey resource.logicalId) ->
+            Error $"Resource '{resource.logicalId}' of type {resource.resourceType} has no resource data resolved"
+        | Some importIdentityResolver ->
+            match AwsCloudFormation.mapToPulumi resource.resourceType with
+            | None ->
+                Error $"Resource type {resource.resourceType} has no corresponding Pulumi type"
+            | Some pulumiType ->
+                let data = resourceData[resource.logicalId]
+                match importIdentityResolver.resolveImportIdentity resource data resourceContext with
+                | Ok importId ->
+                    Ok {
+                        importId = importId
+                        resourceType = pulumiType
+                        logicalId = resource.logicalId.Replace("-", "_")
+                    }
+                | Error importIdentityError ->
+                    Error $"Failed to generate import ID for {resource.resourceType}: {importIdentityError}"
 
 
-let getPulumiImportJson 
-    (cloudformationResources: seq<AwsCloudFormationResource>) 
+let getPulumiImportJson
+    (cloudformationResources: seq<AwsCloudFormationResource>)
     (resourceContext: AwsResourceContext)
     (resourceData: Dictionary<string, Dictionary<string,string>>)
     : JObject * ResizeArray<string> =
@@ -1133,9 +1126,8 @@ let getPulumiImportJson
     // loop over filtered resources to construct pulumiImportJson
     for resource in cloudformationResources do
         let resourceJson = JObject()
-
         match getRemappedImportProps resource resourceData resourceContext with
-        | Some (remappedSpecResult) -> 
+        | Ok remappedSpecResult ->
             resourceJson.Add("type", remappedSpecResult.resourceType)
             resourceJson.Add("name", remappedSpecResult.logicalId)
             resourceJson.Add("id", remappedSpecResult.importId)
@@ -1156,7 +1148,7 @@ let getPulumiImportJson
                 | None ->
                     resourceJson.Add("type", resource.resourceType)
                     errors.Add $"CloudFormation resource '{resource.resourceType}' did not have a corresponding Pulumi type"
-            
+
             // set the import id
             // special handling for certain resource types...
             if resource.resourceType = "AWS::ApiGateway::Method" then
@@ -1206,7 +1198,7 @@ let getPulumiImportJson
             else
                 // base case: set the import id to the resourceId
                 resourceJson.Add("id", resource.resourceId)
-            
+
             // set resource name as cfn resource logical id with underscores replaced with dashes
             resourceJson.Add("name", resource.logicalId.Replace("-", "_"))
 
@@ -1236,7 +1228,7 @@ let getAwsCloudFormationResources (stack: AwsCloudFormationStack) = task {
                 { logicalId = resource.LogicalResourceId
                   resourceId = resource.PhysicalResourceId
                   resourceType = resource.ResourceType })
-        
+
         // get all stack exports in order to resolve stack imports
         let! stackExports = getStackExports stack.region
 
@@ -1248,7 +1240,7 @@ let getAwsCloudFormationResources (stack: AwsCloudFormationStack) = task {
 
         // get set of resource types
         let resourceTypes = Set [ for resource in cloudformationResources -> resource.resourceType ]
-        
+
         // fetch additional info from aws api about certain types
         // get map of load balancer arn to load balancer details
         let! loadBalancers = getLoadBalancers resourceTypes stack.region
@@ -1268,7 +1260,7 @@ let getAwsCloudFormationResources (stack: AwsCloudFormationStack) = task {
         let! securityGroupIngressRules = listResourcesIfInTemplate cloudformationResources "AWS::EC2::SecurityGroupIngress" stack.region
 
         let! securityGroupEgressRules = listResourcesIfInTemplate cloudformationResources "AWS::EC2::SecurityGroupEgress" stack.region
-        
+
         let resourceContext = {
             loadBalancers = loadBalancers
             elasticIps = elasticIps
@@ -1279,7 +1271,7 @@ let getAwsCloudFormationResources (stack: AwsCloudFormationStack) = task {
             securityGroupEgressRules = securityGroupEgressRules
         }
 
-        let (pulumiImportJson, errors) = getPulumiImportJson 
+        let (pulumiImportJson, errors) = getPulumiImportJson
                                             cloudformationResources
                                             resourceContext
                                             resourceData

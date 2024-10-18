@@ -34,36 +34,29 @@ let resourceDataIsEqual
             && (dictIsEqual entry.Value dic2Ordered[entry.Key]))
     (dic1Ordered.Count = dic2Ordered.Count) && keysMatch
 
-let getImportIdentityParts = testList "getImportIdentityParts" [
-    test "resourceType not in remapSpec returns None" {
-        Expect.equal (getImportIdentityParts "foo") None ""
-    }
-    test "resourceType in remapSpec returns Some(parts)" {
-        Expect.equal (getImportIdentityParts "AWS::S3::BucketPolicy") (Some ["Bucket"]) ""
-    }
-]
-
 let getRemappedImportProps = testList "getRemappedImportProps" [
-    test "resourceType not in remapSpec returns None" {
+    test "resourceType not in remapSpec returns error" {
         let resource = {
-                logicalId = "foo"
-                resourceId = "bar"
-                resourceType = "boink"
+            logicalId = "foo"
+            resourceId = "bar"
+            resourceType = "boink"
         }
         let resourceData = Dictionary<string, Dictionary<string, string>>()
         let actual = getRemappedImportProps resource resourceData AwsResourceContext.Empty
-        Expect.equal actual None ""
+        Expect.equal actual (Error "Found no mapping specification for resource type boink") ""
     }
-    test "resourceType in remapSpec with missing resourceData returns None" {
+
+    test "resourceType in remapSpec with missing resourceData returns error" {
         let resource = {
-                logicalId = "foo"
-                resourceId = "bar"
-                resourceType = "AWS::ApiGateway::Deployment"
+            logicalId = "foo"
+            resourceId = "bar"
+            resourceType = "AWS::ApiGateway::Deployment"
         }
         let resourceData = Dictionary<string, Dictionary<string, string>>()
         let actual = getRemappedImportProps resource resourceData AwsResourceContext.Empty
-        Expect.equal actual None ""
+        Expect.equal actual (Error "Resource 'foo' of type AWS::ApiGateway::Deployment has no resource data resolved") ""
     }
+
     test "ApiGateway Deployment remaps with remapFromImportIdentityParts)" {
         let resource = {
             logicalId = "foo-foo"
@@ -80,7 +73,7 @@ let getRemappedImportProps = testList "getRemappedImportProps" [
             importId = "fonce/foo-foo"
         }
         let actual = getRemappedImportProps resource resourceData AwsResourceContext.Empty
-        Expect.equal actual (Some(expectedResult)) ""
+        Expect.equal actual (Ok(expectedResult)) ""
     }
     test "ECS Service remaps with remapFromIdAsArn" {
         let logicalId = "myService"
@@ -98,7 +91,7 @@ let getRemappedImportProps = testList "getRemappedImportProps" [
             importId = "dev2-environment-ECSCluster-2JDFODYBOS1/dev2-dropbeacon-ECSServiceV2-zFfDnUyTGIgg"
         } 
         let actual = getRemappedImportProps resource resourceData AwsResourceContext.Empty
-        Expect.equal actual (Some(expectedResult)) ""
+        Expect.equal actual (Ok(expectedResult)) ""
     }
     test "DNS record remaps with remapFromImportIdentityPartsDNSRecord" {
         let logicalId = "myDNSRecord"
@@ -119,7 +112,7 @@ let getRemappedImportProps = testList "getRemappedImportProps" [
             importId = "hostedZoneId_name_type"
         } 
         let actual = getRemappedImportProps resource resourceData AwsResourceContext.Empty
-        Expect.equal actual (Some(expectedResult)) ""
+        Expect.equal actual (Ok(expectedResult)) ""
 
         // also remaps correctly if SetIdentifier is present in data
         resourceData[logicalId].Add("SetIdentifier", "setIdentifier")
@@ -129,7 +122,7 @@ let getRemappedImportProps = testList "getRemappedImportProps" [
             importId = "hostedZoneId_name_type_setIdentifier"
         }
         let actual = getRemappedImportProps resource resourceData AwsResourceContext.Empty
-        Expect.equal actual (Some(expectedResultWithSetId)) ""
+        Expect.equal actual (Ok(expectedResultWithSetId)) ""
     }
     test "Listener Certificate remaps with remapFromImportIdentityPartsListenerCertificate" {
         let logicalId = "myListenerCertificate"
@@ -149,7 +142,7 @@ let getRemappedImportProps = testList "getRemappedImportProps" [
             importId = "listenerArn_certificateArn"
         } 
         let actual = getRemappedImportProps resource resourceData AwsResourceContext.Empty
-        Expect.equal actual (Some(expectedResult)) ""
+        Expect.equal actual (Ok(expectedResult)) ""
     }
 ]
 
@@ -302,7 +295,6 @@ let all =
         [
             Shared.Tests.shared
             getRemappedImportProps
-            getImportIdentityParts
             resolveTokenValue
             templateBodyData
             getPulumiImportJson
